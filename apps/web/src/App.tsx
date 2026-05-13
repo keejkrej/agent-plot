@@ -1,6 +1,14 @@
 import type { Spec } from "@json-render/core";
 import type { WsInbound } from "@agent-plot/contracts";
+import { FileUpIcon, MessageSquareTextIcon, PlusIcon, SendIcon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Frame, FrameDescription, FrameHeader, FramePanel, FrameTitle } from "@/components/ui/frame";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { CanvasPanel } from "./canvas/CanvasPanel.js";
 
 const wsBaseUrl = () => {
@@ -77,7 +85,7 @@ export function App() {
   const onUpload = useCallback(
     async (file: File | undefined) => {
       if (!file || !sessionId) return;
-      setUploadStatus("Uploading…");
+      setUploadStatus("Uploading...");
       const fd = new FormData();
       fd.set("file", file);
       const r = await fetch(`${api}/sessions/${sessionId}/upload`, { method: "POST", body: fd });
@@ -93,139 +101,97 @@ export function App() {
   );
 
   return (
-    <div
-      style={{
-        minHeight: "100%",
-        display: "grid",
-        gridTemplateRows: "auto 1fr",
-        padding: "20px 24px 32px",
-        gap: 20,
-        maxWidth: 1200,
-        margin: "0 auto",
-      }}
-    >
-      <header>
-        <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em" }}>agent-plot</h1>
-        <p style={{ margin: 0, color: "var(--muted)", fontSize: 14 }}>
+    <div className="mx-auto grid min-h-full max-w-7xl grid-rows-[auto_1fr] gap-5 px-6 py-5 pb-8">
+      <header className="space-y-1">
+        <h1 className="font-semibold text-2xl tracking-normal">agent-plot</h1>
+        <p className="text-muted-foreground text-sm">
           TIFF session workspace, Python artifacts, and a json-render canvas over WebSocket.
         </p>
       </header>
 
-      <div className="layout-grid">
-        <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <button type="button" onClick={() => void newSession()}>
+      <main className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <Button type="button" onClick={() => void newSession()}>
+              <PlusIcon />
               New session
-            </button>
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 13,
-                color: "var(--muted)",
-              }}
-            >
-              <span>TIFF</span>
-              <input
-                type="file"
+            </Button>
+
+            <Field className="min-w-60 max-w-xs flex-1 gap-1.5">
+              <FieldLabel className="text-muted-foreground text-xs">
+                <FileUpIcon className="size-3.5" />
+                TIFF
+              </FieldLabel>
+              <Input
                 accept=".tif,.tiff,image/tiff"
                 disabled={!sessionId}
+                nativeInput
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
+                  const f = e.currentTarget.files?.[0];
                   void onUpload(f);
-                  e.target.value = "";
+                  e.currentTarget.value = "";
                 }}
+                type="file"
               />
-            </label>
+            </Field>
+
             {sessionId ? (
-              <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>
-                {sessionId.slice(0, 8)}…
-              </span>
+              <Badge className="font-mono" variant="outline">
+                {sessionId.slice(0, 8)}
+              </Badge>
             ) : null}
           </div>
+
           {uploadStatus ? (
-            <p style={{ margin: 0, fontSize: 13, color: uploadStatus.startsWith("Upload") ? "var(--muted)" : "#f85149" }}>
+            <Badge className="w-fit" variant={uploadStatus.startsWith("Uploaded") ? "success" : "error"}>
               {uploadStatus}
-            </p>
+            </Badge>
           ) : null}
+
           {canvasError ? (
-            <p
-              style={{
-                margin: 0,
-                padding: "10px 12px",
-                borderRadius: 8,
-                background: "#3d1117",
-                border: "1px solid #f85149",
-                color: "#ffb1af",
-                fontSize: 13,
-              }}
-            >
-              Canvas error: {canvasError}
-            </p>
+            <Alert variant="error">
+              <TriangleAlertIcon />
+              <AlertTitle>Canvas error</AlertTitle>
+              <AlertDescription>{canvasError}</AlertDescription>
+            </Alert>
           ) : null}
+
           <CanvasPanel spec={spec} />
         </section>
 
-        <aside
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            padding: 14,
-            minHeight: 420,
-            position: "sticky",
-            top: 16,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--muted)" }}>Chat</h2>
-          <pre
-            style={{
-              flex: 1,
-              margin: 0,
-              padding: 12,
-              background: "#010409",
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              color: "#c9d1d9",
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              overflow: "auto",
-              maxHeight: 280,
-            }}
-          >
-            {transcript}
-          </pre>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={sessionId ? "Message… (rebuilds artifacts + canvas)" : "Create a session first"}
-            disabled={!sessionId}
-            rows={3}
-            style={{
-              resize: "vertical",
-              padding: 10,
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              background: "#0d1117",
-              color: "var(--text)",
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-          />
-          <button type="button" onClick={sendMessage} disabled={!sessionId || !draft.trim()}>
-            Send
-          </button>
-        </aside>
-      </div>
+        <Frame className="lg:sticky lg:top-4">
+          <FrameHeader>
+            <FrameTitle className="flex items-center gap-2">
+              <MessageSquareTextIcon className="size-4 text-muted-foreground" />
+              Chat
+            </FrameTitle>
+            <FrameDescription>Session transcript and message input.</FrameDescription>
+          </FrameHeader>
+          <FramePanel className="flex min-h-[420px] flex-col gap-3">
+            <pre className="max-h-72 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border bg-code p-3 font-mono text-code-foreground text-xs leading-6">
+              {transcript}
+            </pre>
+            <Textarea
+              className="min-h-24 resize-y"
+              disabled={!sessionId}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder={sessionId ? "Message... (rebuilds artifacts + canvas)" : "Create a session first"}
+              rows={3}
+              value={draft}
+            />
+            <Button disabled={!sessionId || !draft.trim()} onClick={sendMessage} type="button">
+              <SendIcon />
+              Send
+            </Button>
+          </FramePanel>
+        </Frame>
+      </main>
     </div>
   );
 }

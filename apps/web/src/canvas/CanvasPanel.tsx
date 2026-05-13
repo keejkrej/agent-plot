@@ -7,21 +7,18 @@ import {
   VisibilityProvider,
 } from "@json-render/react";
 import type { ComponentRenderProps } from "@json-render/react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Frame, FramePanel } from "@/components/ui/frame";
 import { plotRegistry } from "./registry.js";
 
 function UnknownBlock({ element }: ComponentRenderProps) {
   return (
-    <div
-      style={{
-        padding: 12,
-        border: "1px dashed #f85149",
-        borderRadius: 8,
-        fontSize: 12,
-        color: "#f85149",
-      }}
-    >
-      Unknown element type: <code>{element.type}</code>
-    </div>
+    <Alert variant="error">
+      <AlertTitle>Unknown element type</AlertTitle>
+      <AlertDescription>
+        <code>{element.type}</code>
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -31,17 +28,11 @@ export function CanvasPanel({ spec }: { spec: Spec | null }) {
       <VisibilityProvider>
         <ActionProvider handlers={{}}>
           <ValidationProvider>
-            <div
-              style={{
-                minHeight: 200,
-                padding: 16,
-                background: "#010409",
-                borderRadius: 12,
-                border: "1px solid #21262d",
-              }}
-            >
-              <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
-            </div>
+            <Frame className="min-h-52">
+              <FramePanel className="min-h-52 overflow-hidden bg-code p-4">
+                <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
+              </FramePanel>
+            </Frame>
           </ValidationProvider>
         </ActionProvider>
       </VisibilityProvider>
