@@ -1,0 +1,53 @@
+{
+  "root": "main",
+  "elements": {
+    "main": {
+      "type": "Stack",
+      "props": { "direction": "column", "gap": 20 },
+      "children": ["title", "images", "charts"]
+    },
+    "title": {
+      "type": "Caption",
+      "props": { "text": "TIFF overview (raw · FFT · stats)" },
+      "children": []
+    },
+    "images": {
+      "type": "Stack",
+      "props": { "direction": "row", "gap": 12 },
+      "children": ["rawImg", "fftImg"]
+    },
+    "rawImg": {
+      "type": "PreviewImage",
+      "props": { "src": { "$payload": "raw" }, "caption": "Raw (scaled)" },
+      "children": []
+    },
+    "fftImg": {
+      "type": "PreviewImage",
+      "props": { "src": { "$payload": "fft" }, "caption": "FFT magnitude (log)" },
+      "children": []
+    },
+    "charts": {
+      "type": "Stack",
+      "props": { "direction": "row", "gap": 16 },
+      "children": ["line", "hist"]
+    },
+    "line": {
+      "type": "LinePlot",
+      "props": {
+        "title": "Mid-row profile",
+        "x": { "$payload": "lineX" },
+        "y": { "$payload": "lineY" }
+      },
+      "children": []
+    },
+    "hist": {
+      "type": "Histogram",
+      "props": {
+        "title": "Intensity histogram (sampled)",
+        "x": { "$payload": "histX" },
+        "y": { "$payload": "histY" }
+      },
+      "children": []
+    }
+  }
+}

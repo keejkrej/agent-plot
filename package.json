@@ -1,0 +1,12 @@
+{
+  "name": "agent-plot",
+  "private": true,
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "pnpm run --parallel dev:api dev:web",
+    "dev:api": "pnpm --filter @agent-plot/server dev",
+    "dev:web": "pnpm --filter @agent-plot/web dev",
+    "build": "pnpm run -r build",
+    "typecheck": "pnpm run -r typecheck"
+  }
+}
