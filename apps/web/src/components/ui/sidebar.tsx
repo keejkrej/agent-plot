@@ -3,9 +3,10 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
 import * as React from "react";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { readSidebarWidth, writeSidebarWidth } from "@/lib/sidebarWidthStorage";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,42 @@ const SIDEBAR_WIDTH: string = "16rem";
 const SIDEBAR_WIDTH_MOBILE: string = "18rem";
 const SIDEBAR_WIDTH_ICON: string = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT: string = "b";
+const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
+
+type SidebarResizableOptions = {
+  maxWidth?: number;
+  minWidth?: number;
+  onResize?: (width: number) => void;
+  shouldAcceptWidth?: (context: {
+    currentWidth: number;
+    nextWidth: number;
+    rail: HTMLButtonElement;
+    side: "left" | "right";
+    sidebarRoot: HTMLElement;
+    wrapper: HTMLElement;
+  }) => boolean;
+  storageKey?: string;
+};
+
+type SidebarResolvedResizableOptions = {
+  maxWidth: number;
+  minWidth: number;
+  onResize?: (width: number) => void;
+  shouldAcceptWidth?: (context: {
+    currentWidth: number;
+    nextWidth: number;
+    rail: HTMLButtonElement;
+    side: "left" | "right";
+    sidebarRoot: HTMLElement;
+    wrapper: HTMLElement;
+  }) => boolean;
+  storageKey: string | null;
+};
+
+type SidebarInstanceContextProps = {
+  resizable: SidebarResolvedResizableOptions | null;
+  side: "left" | "right";
+};
 
 const sidebarMenuButtonVariants = cva(
   "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg:not([class*='size-'])]:size-4 [&>svg]:shrink-0",
@@ -66,6 +103,8 @@ export type SidebarContextProps = {
 
 export const SidebarContext: React.Context<SidebarContextProps | null> =
   React.createContext<SidebarContextProps | null>(null);
+
+const SidebarInstanceContext = React.createContext<SidebarInstanceContextProps | null>(null);
 
 export function useSidebar(): SidebarContextProps {
   const context = React.useContext(SidebarContext);
@@ -181,6 +220,7 @@ export function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
+  resizable = false,
   className,
   children,
   ...props
@@ -188,8 +228,26 @@ export function Sidebar({
   side?: "left" | "right";
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
+  resizable?: boolean | SidebarResizableOptions;
 }): React.ReactElement {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const resolvedResizable = React.useMemo<SidebarResolvedResizableOptions | null>(() => {
+    if (isMobile || collapsible === "none" || !resizable) {
+      return null;
+    }
+    const options = typeof resizable === "boolean" ? {} : resizable;
+    return {
+      maxWidth: options.maxWidth ?? Number.POSITIVE_INFINITY,
+      minWidth: options.minWidth ?? SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH,
+      storageKey: options.storageKey ?? null,
+      ...(options.onResize ? { onResize: options.onResize } : {}),
+      ...(options.shouldAcceptWidth ? { shouldAcceptWidth: options.shouldAcceptWidth } : {}),
+    };
+  }, [collapsible, isMobile, resizable]);
+  const instanceContextValue = React.useMemo<SidebarInstanceContextProps>(
+    () => ({ side, resizable: resolvedResizable }),
+    [resolvedResizable, side],
+  );
 
   if (collapsible === "none") {
     return (

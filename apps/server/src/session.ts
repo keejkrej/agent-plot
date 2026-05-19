@@ -41,31 +41,65 @@ export async function getSession(id: string): Promise<Session | null> {
   }
 }
 
+export type SessionMeta = {
+  title?: string;
+  archivedAt: string | null;
+};
+
+const META_FILE = "session-meta.json";
+
+export async function readSessionMeta(session: Session): Promise<SessionMeta> {
+  try {
+    const raw = await readFile(path.join(session.dir, META_FILE), "utf-8");
+    const parsed = JSON.parse(raw) as Partial<SessionMeta>;
+    return {
+      archivedAt: typeof parsed.archivedAt === "string" ? parsed.archivedAt : null,
+      ...(typeof parsed.title === "string" ? { title: parsed.title } : {}),
+    };
+  } catch {
+    return { archivedAt: null };
+  }
+}
+
+export async function writeSessionMeta(session: Session, meta: SessionMeta): Promise<void> {
+  await writeFile(path.join(session.dir, META_FILE), JSON.stringify(meta, null, 2), "utf-8");
+}
+
+function sessionTitle(id: string, meta: SessionMeta): string {
+  return meta.title?.trim() || `Session ${id.slice(0, 8)}`;
+}
+
 export type SessionListEntry = {
   id: string;
   title: string;
   updatedAt: string;
+  archivedAt: string | null;
 };
 
-export async function listSessions(): Promise<SessionListEntry[]> {
+export async function listSessions(options?: { archived?: boolean }): Promise<SessionListEntry[]> {
+  const wantArchived = options?.archived === true;
   try {
     const names = await readdir(ROOT);
     const entries: SessionListEntry[] = [];
     for (const id of names) {
-      const dir = path.join(ROOT, id);
       const session = await getSession(id);
       if (!session) continue;
-      let updatedAt = new Date(0).toISOString();
+      const meta = await readSessionMeta(session);
+      const isArchived = meta.archivedAt !== null;
+      if (isArchived !== wantArchived) continue;
+
+      let updatedAt = meta.archivedAt ?? new Date(0).toISOString();
       try {
-        const st = await stat(dir);
-        updatedAt = st.mtime.toISOString();
+        const st = await stat(session.dir);
+        updatedAt = isArchived ? (meta.archivedAt ?? st.mtime.toISOString()) : st.mtime.toISOString();
       } catch {
         /* ignore */
       }
       entries.push({
         id,
-        title: `Session ${id.slice(0, 8)}`,
+        title: sessionTitle(id, meta),
         updatedAt,
+        archivedAt: meta.archivedAt,
       });
     }
     entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -73,6 +107,24 @@ export async function listSessions(): Promise<SessionListEntry[]> {
   } catch {
     return [];
   }
+}
+
+export async function archiveSession(id: string): Promise<Session | null> {
+  const session = await getSession(id);
+  if (!session) return null;
+  const meta = await readSessionMeta(session);
+  if (meta.archivedAt) return session;
+  await writeSessionMeta(session, { ...meta, archivedAt: new Date().toISOString() });
+  return session;
+}
+
+export async function unarchiveSession(id: string): Promise<Session | null> {
+  const session = await getSession(id);
+  if (!session) return null;
+  const meta = await readSessionMeta(session);
+  if (!meta.archivedAt) return session;
+  await writeSessionMeta(session, { ...meta, archivedAt: null });
+  return session;
 }
 
 export async function saveUpload(session: Session, buffer: Buffer, originalName: string) {

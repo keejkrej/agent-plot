@@ -21,12 +21,14 @@ import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.js
 import { refreshSessionCanvas } from "./canvasRefresh.js";
 import { describeTiff } from "./pythonRun.js";
 import {
+  archiveSession,
   createSession,
   getSession,
   listSessions,
   readCanvasVisibility,
   saveUpload,
   sessionsRoot,
+  unarchiveSession,
   writeCanvasVisibility,
 } from "./session.js";
 
@@ -49,13 +51,29 @@ app.use(
 app.get("/health", (c) => c.json({ ok: true }));
 
 app.get("/api/sessions", async (c) => {
-  const sessions = await listSessions();
+  const archivedParam = c.req.query("archived");
+  const archived = archivedParam === "true";
+  const sessions = await listSessions({ archived });
   return c.json({ sessions });
 });
 
 app.post("/api/sessions", async (c) => {
   const s = await createSession();
   return c.json({ id: s.id });
+});
+
+app.post("/api/sessions/:id/archive", async (c) => {
+  const id = c.req.param("id");
+  const session = await archiveSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  return c.json({ ok: true });
+});
+
+app.post("/api/sessions/:id/unarchive", async (c) => {
+  const id = c.req.param("id");
+  const session = await unarchiveSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  return c.json({ ok: true });
 });
 
 app.get("/api/sessions/:id/chat", async (c) => {

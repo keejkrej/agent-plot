@@ -75,7 +75,11 @@ export async function broadcastAssistantEnd(
 ): Promise<SessionChatHistory> {
   const existing = history.messages.find((m) => m.id === assistantId);
   if (!existing) return history;
-  const nextMsg: ChatMessageSnapshot = { ...existing, streaming: false };
+  const nextMsg: ChatMessageSnapshot = {
+    ...existing,
+    streaming: false,
+    completedAt: new Date().toISOString(),
+  };
   const next = upsertMessage(history, nextMsg);
   await emit(session, { type: "chat.assistant.end", id: assistantId }, next);
   return next;

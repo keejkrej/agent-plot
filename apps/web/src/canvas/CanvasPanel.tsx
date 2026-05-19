@@ -16,6 +16,9 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { panelContentPaddingClassName, panelContentScrollClassName } from "@/components/panelHeader.js";
+import { Card, CardPanel } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { plotRegistry } from "./registry.js";
 
 function UnknownBlock({ element }: ComponentRenderProps) {
@@ -32,14 +35,15 @@ function UnknownBlock({ element }: ComponentRenderProps) {
 export function CanvasPanel({ spec }: { spec: Spec | null }) {
   if (!spec) {
     return (
-      <Empty className="flex-1">
+      <Empty className={cn("h-full min-h-0 flex-1", panelContentPaddingClassName)}>
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <LayoutGridIcon />
           </EmptyMedia>
           <EmptyTitle>Canvas</EmptyTitle>
           <EmptyDescription>
-            Start a session and chat with the assistant; the canvas updates when artifacts are available for the session.
+            Start a session and chat with the assistant; the canvas updates when artifacts are
+            available for the session.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -47,16 +51,24 @@ export function CanvasPanel({ spec }: { spec: Spec | null }) {
   }
 
   return (
-    <StateProvider initialState={{}}>
-      <VisibilityProvider>
-        <ActionProvider handlers={{}}>
-          <ValidationProvider>
-            <div className="w-full flex-1 p-6">
-              <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
-            </div>
-          </ValidationProvider>
-        </ActionProvider>
-      </VisibilityProvider>
-    </StateProvider>
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <StateProvider initialState={{}}>
+        <VisibilityProvider>
+          <ActionProvider handlers={{}}>
+            <ValidationProvider>
+              <div className={cn("json-render-canvas", panelContentScrollClassName)}>
+                <div className="h-3 sm:h-4" />
+                <Card className="min-w-0 w-full">
+                  <CardPanel className="min-w-0">
+                    <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
+                  </CardPanel>
+                </Card>
+                <div className="h-3 sm:h-4" />
+              </div>
+            </ValidationProvider>
+          </ActionProvider>
+        </VisibilityProvider>
+      </StateProvider>
+    </div>
   );
 }

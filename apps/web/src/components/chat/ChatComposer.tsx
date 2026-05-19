@@ -1,7 +1,7 @@
 import { PaperclipIcon } from "lucide-react";
 import { useRef, type FormEvent } from "react";
 import { ComposerPrimaryActions } from "@/components/chat/ComposerPrimaryActions.js";
-import { deriveComposerSendState } from "@/components/ChatView.logic.js";
+import { deriveComposerSendState, resolveComposerPlaceholder } from "@/components/ChatView.logic.js";
 import { cn } from "@/lib/utils";
 
 type ChatComposerProps = {
@@ -10,6 +10,7 @@ type ChatComposerProps = {
   isRunning?: boolean;
   isConnecting?: boolean;
   isSendBusy?: boolean;
+  connection?: "connected" | "connecting" | "disconnected";
   sessionId: string | null;
   onDraftChange: (value: string) => void;
   onSend: () => void;
@@ -22,6 +23,7 @@ export function ChatComposer({
   isRunning = false,
   isConnecting = false,
   isSendBusy = false,
+  connection = "connected",
   sessionId,
   onDraftChange,
   onSend,
@@ -74,11 +76,10 @@ export function ChatComposer({
               const file = e.dataTransfer.files[0];
               if (file) onUpload(file);
             }}
-            placeholder={
-              sessionId
-                ? "Describe what to analyze (TIFF path or upload)…"
-                : "Create a session to chat"
-            }
+            placeholder={resolveComposerPlaceholder({
+              connection: isConnecting ? "connecting" : connection,
+              sessionId,
+            })}
             rows={3}
             value={draft}
           />

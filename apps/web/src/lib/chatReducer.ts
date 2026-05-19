@@ -47,7 +47,9 @@ export function applyWsMessage(state: ChatState, msg: WsInbound): ChatState {
       return {
         ...state,
         messages: state.messages.map((m) =>
-          m.id === msg.id ? { ...m, streaming: false } : m,
+          m.id === msg.id
+            ? { ...m, streaming: false, completedAt: new Date().toISOString() }
+            : m,
         ),
       };
     }

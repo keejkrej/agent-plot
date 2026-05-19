@@ -33,11 +33,17 @@ const components: Components = {
       <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.85em]">{children}</code>
     );
   },
-  pre: ({ children }) => (
-    <pre className="mb-3 overflow-x-auto rounded-lg border border-border bg-muted/50 p-3 last:mb-0">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => {
+    const code = String(children ?? "").trim();
+    if (!code) {
+      return null;
+    }
+    return (
+      <pre className="mb-3 overflow-x-auto rounded-lg border border-border bg-muted/50 p-3 last:mb-0">
+        {children}
+      </pre>
+    );
+  },
   h1: ({ children }) => <h1 className="mb-2 font-semibold text-lg">{children}</h1>,
   h2: ({ children }) => <h2 className="mb-2 font-semibold text-base">{children}</h2>,
   h3: ({ children }) => <h3 className="mb-2 font-medium text-sm">{children}</h3>,
@@ -49,13 +55,18 @@ const components: Components = {
 };
 
 export default function ChatMarkdown({ text, isStreaming, className }: ChatMarkdownProps) {
-  if (!text.trim() && !isStreaming) {
+  if (!text.trim()) {
     return null;
   }
   return (
-    <div className={cn("text-sm text-foreground/95", className)}>
+    <div
+      className={cn(
+        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80",
+        className,
+      )}
+    >
       <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>
-        {text || " "}
+        {text}
       </ReactMarkdown>
       {isStreaming ? (
         <span className="ms-0.5 inline-block animate-pulse text-muted-foreground">▍</span>

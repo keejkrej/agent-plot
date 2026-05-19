@@ -1,5 +1,4 @@
-import { ChevronDownIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { AssistantTimelineRow } from "@/components/chat/AssistantTimelineRow.js";
 import { SystemTimelineRow } from "@/components/chat/SystemTimelineRow.js";
 import { UserTimelineRow } from "@/components/chat/UserTimelineRow.js";
@@ -12,12 +11,16 @@ import {
 import { cn } from "@/lib/utils";
 import type { ActivityEntry, ChatMessage } from "@/types.js";
 
+const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
+const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+
 type MessagesTimelineProps = {
   messages: ChatMessage[];
   activities: ActivityEntry[];
   isRunning: boolean;
   onViewCanvas?: () => void;
   onIsAtEndChange?: (isAtEnd: boolean) => void;
+  scrollToEndRef?: RefObject<(() => void) | null>;
 };
 
 function TimelineRowContent({
@@ -33,23 +36,20 @@ function TimelineRowContent({
         "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
+      data-timeline-row-id={row.id}
+      data-timeline-row-kind={row.kind}
     >
       {row.kind === "work" ? (
         <WorkGroupSection groupedEntries={row.groupedEntries} onViewCanvas={onViewCanvas} />
       ) : null}
-      {row.kind === "message" && row.message.role === "user" ? (
-        <UserTimelineRow message={row.message} />
-      ) : null}
+      {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
-        <AssistantTimelineRow
-          message={row.message}
-          showCompletionDivider={row.showCompletionDivider}
-        />
+        <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "message" && row.message.role === "system" ? (
         <SystemTimelineRow message={row.message} />
       ) : null}
-      {row.kind === "working" ? <WorkingTimelineRow /> : null}
+      {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
 }
@@ -60,10 +60,10 @@ export function MessagesTimeline({
   isRunning,
   onViewCanvas,
   onIsAtEndChange,
+  scrollToEndRef,
 }: MessagesTimelineProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showScrollPill, setShowScrollPill] = useState(false);
   const stickRef = useRef(true);
 
   const rows = useMemo(
@@ -71,12 +71,22 @@ export function MessagesTimeline({
     [messages, activities, isRunning],
   );
 
-  const scrollToEnd = useCallback((behavior: ScrollBehavior = "smooth") => {
-    bottomRef.current?.scrollIntoView({ behavior });
-    stickRef.current = true;
-    setShowScrollPill(false);
-    onIsAtEndChange?.(true);
-  }, [onIsAtEndChange]);
+  const scrollToEnd = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      bottomRef.current?.scrollIntoView({ behavior });
+      stickRef.current = true;
+      onIsAtEndChange?.(true);
+    },
+    [onIsAtEndChange],
+  );
+
+  useEffect(() => {
+    if (!scrollToEndRef) return;
+    scrollToEndRef.current = () => scrollToEnd();
+    return () => {
+      scrollToEndRef.current = null;
+    };
+  }, [scrollToEnd, scrollToEndRef]);
 
   useEffect(() => {
     if (stickRef.current) {
@@ -85,20 +95,19 @@ export function MessagesTimeline({
   }, [rows, isRunning]);
 
   const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const element = scrollRef.current;
+    if (!element) return;
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
     const atBottom = distance < 48;
     stickRef.current = atBottom;
-    setShowScrollPill(!atBottom);
     onIsAtEndChange?.(atBottom);
   }, [onIsAtEndChange]);
 
   if (rows.length === 0 && !isRunning) {
     return (
-      <div className="flex h-full items-center justify-center px-3 sm:px-5">
+      <div className="flex h-full items-center justify-center">
         <p className="text-sm text-muted-foreground/30">
-          Create a session, then describe what to analyze. Include a TIFF path or upload a file.
+          Send a message to start the conversation.
         </p>
       </div>
     );
@@ -112,28 +121,16 @@ export function MessagesTimeline({
         onScroll={onScroll}
       >
         <div className="mx-auto w-full min-w-0 max-w-3xl">
-          <div className="h-3 sm:h-4" />
+          {TIMELINE_LIST_HEADER}
           {rows.map((row) => (
             <div key={row.id} className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip">
               <TimelineRowContent onViewCanvas={onViewCanvas} row={row} />
             </div>
           ))}
-          <div className="h-3 sm:h-4" />
+          {TIMELINE_LIST_FOOTER}
           <div ref={bottomRef} className="h-px" />
         </div>
       </div>
-      {showScrollPill ? (
-        <div className="pointer-events-none absolute bottom-1 left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5">
-          <button
-            className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs shadow-sm transition-colors hover:border-border hover:text-foreground hover:cursor-pointer"
-            onClick={() => scrollToEnd()}
-            type="button"
-          >
-            <ChevronDownIcon className="size-3.5" />
-            Scroll to bottom
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

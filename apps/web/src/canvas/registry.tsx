@@ -87,7 +87,7 @@ export const { registry: plotRegistry } = defineRegistry(plotCatalog, {
       const gap = props.gap ?? 12;
       return (
         <div
-          className="flex"
+          className="flex w-full min-w-0"
           style={{
             flexDirection: dir,
             gap,

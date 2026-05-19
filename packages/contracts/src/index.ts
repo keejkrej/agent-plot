@@ -8,6 +8,7 @@ export type ChatMessageSnapshot = {
   text: string;
   createdAt: string;
   streaming?: boolean;
+  completedAt?: string;
 };
 
 export type ActivitySnapshot = {

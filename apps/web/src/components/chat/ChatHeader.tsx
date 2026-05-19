@@ -1,4 +1,4 @@
-import { PanelRightIcon } from "lucide-react";
+import { DiffIcon } from "lucide-react";
 import { memo } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Toggle } from "@/components/ui/toggle";
@@ -10,8 +10,8 @@ export const ChatHeader = memo(function ChatHeader({
   onToggleCanvas,
 }: {
   sessionTitle: string;
-  canvasOpen?: boolean;
-  onToggleCanvas?: () => void;
+  canvasOpen: boolean;
+  onToggleCanvas: () => void;
 }) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
@@ -24,27 +24,25 @@ export const ChatHeader = memo(function ChatHeader({
           {sessionTitle}
         </h2>
       </div>
-      {onToggleCanvas ? (
-        <div className="flex shrink-0 items-center justify-end gap-2">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  aria-label="Toggle canvas panel"
-                  className="shrink-0"
-                  onPressedChange={() => onToggleCanvas()}
-                  pressed={Boolean(canvasOpen)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <PanelRightIcon className="size-3" />
-                </Toggle>
-              }
-            />
-            <TooltipPopup side="bottom">Toggle canvas</TooltipPopup>
-          </Tooltip>
-        </div>
-      ) : null}
+      <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                aria-label="Toggle canvas panel"
+                className="shrink-0"
+                onPressedChange={onToggleCanvas}
+                pressed={canvasOpen}
+                size="xs"
+                variant="outline"
+              >
+                <DiffIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">Toggle canvas panel</TooltipPopup>
+        </Tooltip>
+      </div>
     </div>
   );
 });
