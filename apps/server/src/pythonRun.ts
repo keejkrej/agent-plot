@@ -3,8 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "../../../");
-const PY_ROOT = path.join(REPO_ROOT, "python", "analysis");
+export const REPO_ROOT = path.resolve(__dirname, "../../../");
+export const PY_ANALYSIS_ROOT = path.join(REPO_ROOT, "python", "analysis");
+const PY_ROOT = PY_ANALYSIS_ROOT;
 
 export type PythonResult<T> = { ok: true; data: T } | { ok: false; stderr: string; code: number | null };
 
@@ -32,10 +33,15 @@ function runUv(args: string[], cwd: string, timeoutMs: number): Promise<{ stdout
   });
 }
 
-export async function describeTiff(sessionDir: string): Promise<PythonResult<unknown>> {
+export async function describeTiff(
+  sessionDir: string,
+  tiffPath?: string,
+): Promise<PythonResult<unknown>> {
   try {
     const script = path.join(PY_ROOT, "scripts", "describe_tiff.py");
-    const { stdout, stderr, code } = await runUv([script, sessionDir], sessionDir, 60_000);
+    const args = [script, sessionDir];
+    if (tiffPath) args.push(tiffPath);
+    const { stdout, stderr, code } = await runUv(args, sessionDir, 60_000);
     if (code !== 0) return { ok: false, stderr: stderr || stdout, code };
     return { ok: true, data: JSON.parse(stdout.trim()) };
   } catch (e) {
@@ -43,10 +49,15 @@ export async function describeTiff(sessionDir: string): Promise<PythonResult<unk
   }
 }
 
-export async function buildArtifacts(sessionDir: string): Promise<PythonResult<unknown>> {
+export async function buildArtifacts(
+  sessionDir: string,
+  tiffPath?: string,
+): Promise<PythonResult<unknown>> {
   try {
     const script = path.join(PY_ROOT, "scripts", "build_artifacts.py");
-    const { stdout, stderr, code } = await runUv([script, sessionDir], sessionDir, 120_000);
+    const args = [script, sessionDir];
+    if (tiffPath) args.push(tiffPath);
+    const { stdout, stderr, code } = await runUv(args, sessionDir, 120_000);
     if (code !== 0) return { ok: false, stderr: stderr || stdout, code };
     return { ok: true, data: JSON.parse(stdout.trim()) };
   } catch (e) {

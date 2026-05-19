@@ -1,4 +1,4 @@
-"""Describe TIFF metadata. argv[1] = session_dir"""
+"""Describe TIFF metadata. argv[1] = session_dir, optional argv[2] = tiff path."""
 from __future__ import annotations
 
 import json
@@ -8,17 +8,15 @@ from pathlib import Path
 import numpy as np
 import tifffile as tiff
 
+from _tiff_resolve import resolve_tif_path
+
 
 def main() -> None:
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "missing session_dir"}))
         sys.exit(1)
     session_dir = Path(sys.argv[1]).resolve()
-    candidates = list(session_dir.glob("input*.tif")) + list(session_dir.glob("input*.tiff"))
-    if not candidates:
-        print(json.dumps({"ok": False, "error": "no input.tif"}))
-        sys.exit(1)
-    path = candidates[0]
+    path = resolve_tif_path(session_dir)
     with tiff.TiffFile(str(path)) as tf:
         series = tf.series[0]
         shape = series.shape
@@ -34,7 +32,7 @@ def main() -> None:
         json.dumps(
             {
                 "ok": True,
-                "path": path.name,
+                "path": str(path),
                 "shape": list(vol.shape),
                 "dtype": dtype,
                 "min": lo,

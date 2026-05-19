@@ -1,7 +1,7 @@
 import { Agent, CursorAgentError, type SDKAgent } from "@cursor/sdk";
-import { access } from "node:fs/promises";
 import path from "node:path";
 import { describeVisibility, type CanvasVisibility } from "./canvasIntent.js";
+import { PY_ANALYSIS_ROOT, REPO_ROOT } from "./pythonRun.js";
 import { readSessionAgentId, type Session, writeSessionAgentId } from "./session.js";
 
 const liveAgents = new Map<string, SDKAgent>();
@@ -23,36 +23,50 @@ function agentOptions(session: Session) {
     model: modelSelection(),
     name: `agent-plot-${session.id.slice(0, 8)}`,
     local: {
-      cwd: session.dir,
+      cwd: REPO_ROOT,
       settingSources: [],
     },
   };
 }
 
-async function sessionHasInputTiff(sessionDir: string): Promise<boolean> {
-  for (const name of ["input.tif", "input.tiff"]) {
-    try {
-      await access(path.join(sessionDir, name));
-      return true;
-    } catch {
-      /* try next */
-    }
-  }
-  return false;
+function pythonToolsGuide(sessionDir: string): string {
+  const describeScript = path.join(PY_ANALYSIS_ROOT, "scripts", "describe_tiff.py");
+  const buildScript = path.join(PY_ANALYSIS_ROOT, "scripts", "build_artifacts.py");
+  return [
+    "## Python analysis tools (you choose when to run them)",
+    "Read the user message and decide which script fits. Do not assume a fixed TIFF location.",
+    "",
+    `Session workspace (write artifacts here): ${sessionDir}`,
+    `Python project: ${PY_ANALYSIS_ROOT}`,
+    "",
+    "**describe_tiff.py** — quick metadata (shape, dtype, intensity percentiles).",
+    "```bash",
+    `uv run --directory "${PY_ANALYSIS_ROOT}" python "${describeScript}" "${sessionDir}" "<absolute-or-relative-tiff-path>"`,
+    "```",
+    "",
+    "**build_artifacts.py** — raw preview PNG, FFT magnitude PNG, stats CSV under session artifacts/.",
+    "Run this when the user wants plots/canvas previews. Pass the TIFF path they refer to.",
+    "```bash",
+    `uv run --directory "${PY_ANALYSIS_ROOT}" python "${buildScript}" "${sessionDir}" "<absolute-or-relative-tiff-path>"`,
+    "```",
+    "",
+    "After build_artifacts succeeds, artifacts live at:",
+    `- ${path.join(sessionDir, "artifacts/raw_preview.png")}`,
+    `- ${path.join(sessionDir, "artifacts/fft_mag.png")}`,
+    `- ${path.join(sessionDir, "artifacts/stats.csv")}`,
+    "",
+    "Use your shell/read tools to verify paths exist before running. Interpret paths from the user's wording.",
+  ].join("\n");
 }
 
 function buildPrompt(sessionDir: string, userText: string, visibility: CanvasVisibility): string {
   return [
     "You are the scientific imaging assistant for agent-plot.",
-    `Session workspace (absolute path): ${sessionDir}`,
-    "Expected files:",
-    "- input.tif or input.tiff — uploaded TIFF",
-    "- artifacts/raw_preview.png, artifacts/fft_mag.png, artifacts/stats.csv — generated previews and plot data",
-    "- canvas.json — json-render layout template for the UI",
+    pythonToolsGuide(sessionDir),
     "",
     describeVisibility(visibility),
-    "The server already applies canvas panel visibility from the user's wording (hide/show raw, FFT, charts).",
-    "Analyze the TIFF and artifacts; answer in clear prose. Use your tools to read session files when helpful.",
+    "The server applies canvas panel visibility from the user's wording (hide/show raw, FFT, charts).",
+    "Answer in clear prose after you have inspected data or script output.",
     "Do not edit canvas.json unless the user explicitly asks to change the layout.",
     "",
     "User message:",
@@ -125,15 +139,6 @@ export async function cursorAssistantReply(
 ): Promise<string> {
   const agent = await getSessionAgent(session);
   const prompt = buildPrompt(sessionDir, userText, visibility);
-
-  if (!(await sessionHasInputTiff(sessionDir))) {
-    const note =
-      "No TIFF uploaded in this session yet. Ask the user to upload input.tif before deep image analysis.";
-    onDelta?.(note);
-    const run = await agent.send(`${prompt}\n\n(${note})`);
-    return streamRun(run, onDelta);
-  }
-
   const run = await agent.send(prompt);
   return streamRun(run, onDelta);
 }

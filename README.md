@@ -21,7 +21,7 @@ agent-plot/
 
 ## Prerequisites
 
-- **Node** 20+
+- **Node** 20+ (LTS **22** recommended; `.nvmrc` pins 22). `@cursor/sdk` pulls in native `sqlite3` — use **pnpm** from this repo so `allowBuilds` in `pnpm-workspace.yaml` runs its install script.
 - **pnpm** 10+
 - **uv** ([install](https://docs.astral.sh/uv/getting-started/installation/)) for Python analysis
 - **Cursor API key** (for the default chat agent) — [Cloud Agents dashboard](https://cursor.com/dashboard/cloud-agents)

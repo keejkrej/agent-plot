@@ -1,9 +1,31 @@
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 .turbo
+*.tsbuildinfo
+
+# Rust
+crates/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+python/analysis/.venv/
+packages/server/python/.venv
+
+# Local env
 *.local
 .env
 .env.*
-data/sessions
-packages/server/python/.venv
+
+# Runtime session data (repo root + python dev copies)
+data/sessions/
+python/analysis/data/
+
+# OS
 .DS_Store

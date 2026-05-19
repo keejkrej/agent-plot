@@ -7,8 +7,15 @@ import {
   VisibilityProvider,
 } from "@json-render/react";
 import type { ComponentRenderProps } from "@json-render/react";
+import { LayoutGridIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Frame, FramePanel } from "@/components/ui/frame";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { plotRegistry } from "./registry.js";
 
 function UnknownBlock({ element }: ComponentRenderProps) {
@@ -23,16 +30,30 @@ function UnknownBlock({ element }: ComponentRenderProps) {
 }
 
 export function CanvasPanel({ spec }: { spec: Spec | null }) {
+  if (!spec) {
+    return (
+      <Empty className="flex-1">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <LayoutGridIcon />
+          </EmptyMedia>
+          <EmptyTitle>Canvas</EmptyTitle>
+          <EmptyDescription>
+            Start a session and chat with the assistant; the canvas updates when artifacts are available for the session.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+
   return (
     <StateProvider initialState={{}}>
       <VisibilityProvider>
         <ActionProvider handlers={{}}>
           <ValidationProvider>
-            <Frame className="min-h-52">
-              <FramePanel className="min-h-52 overflow-hidden bg-code p-4">
-                <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
-              </FramePanel>
-            </Frame>
+            <div className="w-full flex-1 p-6">
+              <Renderer spec={spec} registry={plotRegistry} fallback={UnknownBlock} />
+            </div>
           </ValidationProvider>
         </ActionProvider>
       </VisibilityProvider>

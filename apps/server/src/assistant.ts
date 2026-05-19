@@ -1,33 +1,6 @@
 import { describeVisibility, type CanvasVisibility } from "./canvasIntent.js";
 import { cursorAssistantReply, formatCursorAgentError, isCursorAgentConfigured } from "./cursorAgent.js";
-import { describeTiff } from "./pythonRun.js";
 import type { Session } from "./session.js";
-
-type DescribeOk = {
-  ok: true;
-  path: string;
-  shape: number[];
-  dtype: string;
-  min: number;
-  max: number;
-  p1: number;
-  p99: number;
-};
-
-function isDescribeOk(v: unknown): v is DescribeOk {
-  if (!v || typeof v !== "object") return false;
-  const o = v as Record<string, unknown>;
-  return (
-    o.ok === true &&
-    typeof o.path === "string" &&
-    Array.isArray(o.shape) &&
-    typeof o.dtype === "string" &&
-    typeof o.min === "number" &&
-    typeof o.max === "number" &&
-    typeof o.p1 === "number" &&
-    typeof o.p99 === "number"
-  );
-}
 
 async function remoteAgent(url: string, sessionId: string, userText: string): Promise<string> {
   const res = await fetch(url, {
@@ -52,35 +25,16 @@ async function remoteAgent(url: string, sessionId: string, userText: string): Pr
   return (await res.text()).trim();
 }
 
-async function stubAssistantReply(
-  sessionDir: string,
-  userText: string,
-  visibility: CanvasVisibility,
-): Promise<string> {
+function stubAssistantReply(userText: string, visibility: CanvasVisibility): string {
   const visNote = describeVisibility(visibility);
-  const d = await describeTiff(sessionDir);
-  if (d.ok && isDescribeOk(d.data)) {
-    const m = d.data;
-    return [
-      `Assistant (stub): ${m.path} — shape [${m.shape.join("×")}], dtype ${m.dtype}.`,
-      `Value range about ${m.min.toFixed(3)}–${m.max.toFixed(3)} (p1–p99: ${m.p1.toFixed(3)}–${m.p99.toFixed(3)}).`,
-      "",
-      visNote,
-      "",
-      `Your message: ${userText.slice(0, 800)}${userText.length > 800 ? "…" : ""}`,
-    ].join("\n");
-  }
-
   return [
-    "Assistant (stub): no TIFF in this session yet, or describe failed.",
-    d.ok ? "" : `(${d.stderr})`,
+    "Assistant (stub): set CURSOR_API_KEY to run the Cursor agent.",
+    "The agent reads your message and chooses which Python analysis script to run (describe metadata vs build canvas artifacts).",
     "",
     visNote,
     "",
     `Your message: ${userText.slice(0, 400)}${userText.length > 400 ? "…" : ""}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 }
 
 export type AssistantSink = {
@@ -89,9 +43,9 @@ export type AssistantSink = {
 
 /**
  * Chat backend priority:
- * 1. `CURSOR_API_KEY` — Cursor SDK local agent (`@cursor/sdk`) with cwd = session dir
+ * 1. `CURSOR_API_KEY` — Cursor SDK local agent (`@cursor/sdk`) with repo cwd + session workspace
  * 2. `AGENT_PLOT_AGENT_URL` — custom HTTP agent
- * 3. Local stub (`describe_tiff` + visibility note)
+ * 3. Local stub (configuration hint only)
  */
 export async function assistantReply(
   session: Session,
@@ -123,7 +77,7 @@ export async function assistantReply(
     }
   }
 
-  const reply = await stubAssistantReply(sessionDir, userText, visibility);
+  const reply = stubAssistantReply(userText, visibility);
   sink?.onDelta?.(reply);
   return reply;
 }

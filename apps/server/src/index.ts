@@ -53,7 +53,7 @@ app.post("/api/sessions/:id/upload", async (c) => {
   const buf = Buffer.from(await file.arrayBuffer());
   await saveUpload(session, buf, file.name ?? "input.tif");
 
-  const refreshed = await refreshSessionCanvas(session, id);
+  const refreshed = await refreshSessionCanvas(session, id, { buildIfMissing: true });
   broadcast(id, { type: "chat.delta", text: `\n[upload] ${file.name ?? "input.tif"}\n` });
   broadcast(id, { type: "chat.delta", text: refreshed.artifactNote });
   if (refreshed.ok) {
@@ -172,17 +172,18 @@ app.get(
           });
           broadcast(sessionId, { type: "chat.delta", text: streamed ? "\n\n" : "\n(no response)\n\n" });
           const refreshed = await refreshSessionCanvas(session, sessionId);
-          broadcast(sessionId, { type: "chat.delta", text: refreshed.artifactNote });
+          if (refreshed.artifactNote) {
+            broadcast(sessionId, { type: "chat.delta", text: refreshed.artifactNote });
+          }
           if (refreshed.ok) {
             broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
-            broadcast(sessionId, { type: "chat.delta", text: "Canvas updated (json_render).\n" });
           } else if (refreshed.error) {
             broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
             broadcast(sessionId, { type: "chat.delta", text: `Error: ${refreshed.error}\n` });
           } else if (Object.keys(parseCanvasIntentDelta(text)).length > 0) {
             broadcast(sessionId, {
               type: "chat.delta",
-              text: "Canvas preferences saved — upload a TIFF (or send another message after upload) to apply them.\n",
+              text: "Canvas preferences saved. Ask the agent to run build_artifacts when you want previews.\n",
             });
           }
           return;

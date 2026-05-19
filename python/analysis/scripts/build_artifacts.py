@@ -1,6 +1,7 @@
 """
 Build imaging artifacts for a session directory.
-Expects session_dir/input.tif (16-bit or 8-bit TIFF).
+argv[1] = session_dir; optional argv[2] = absolute TIFF path.
+Otherwise uses session_dir/input*.tif*.
 Writes:
   artifacts/raw_preview.png
   artifacts/fft_mag.png
@@ -17,6 +18,8 @@ import pandas as pd
 import tifffile as tiff
 from PIL import Image
 
+from _tiff_resolve import resolve_tif_path
+
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -26,11 +29,7 @@ def main() -> None:
     art = session_dir / "artifacts"
     art.mkdir(parents=True, exist_ok=True)
 
-    candidates = list(session_dir.glob("input*.tif")) + list(session_dir.glob("input*.tiff"))
-    if not candidates:
-        print(json.dumps({"ok": False, "error": "no input.tif in session"}))
-        sys.exit(1)
-    tif_path = candidates[0]
+    tif_path = resolve_tif_path(session_dir)
 
     vol = tiff.imread(str(tif_path))
     if vol.ndim == 3:

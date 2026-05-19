@@ -1,3 +1,5 @@
+import { access } from "node:fs/promises";
+import path from "node:path";
 import { applyCanvasVisibility } from "./canvasIntent.js";
 import { jsonRender, type CanvasSpec } from "./mergeCanvas.js";
 import { buildArtifacts } from "./pythonRun.js";
@@ -15,26 +17,48 @@ export type CanvasRefreshResult =
   | { ok: true; spec: CanvasSpec; artifactNote: string }
   | { ok: false; artifactNote: string; error?: string };
 
-/** Build artifacts (if possible) and return a canvas spec with session visibility prefs applied. */
+async function sessionArtifactsReady(sessionDir: string): Promise<boolean> {
+  try {
+    await access(path.join(sessionDir, "artifacts", "stats.csv"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type RefreshSessionCanvasOptions = {
+  /** When true, run build_artifacts if stats.csv is missing (e.g. after HTTP upload). */
+  buildIfMissing?: boolean;
+};
+
+/** Merge canvas when session artifacts exist (written by the agent or upload + build). */
 export async function refreshSessionCanvas(
   session: Session,
   sessionId: string,
+  options?: RefreshSessionCanvasOptions,
 ): Promise<CanvasRefreshResult> {
   const visibility = await readCanvasVisibility(session);
-  const built = await buildArtifacts(session.dir);
-  if (!built.ok) {
-    return {
-      ok: false,
-      artifactNote: `Artifact build skipped/failed: ${built.stderr}\n`,
-    };
+
+  if (!(await sessionArtifactsReady(session.dir))) {
+    if (options?.buildIfMissing) {
+      const built = await buildArtifacts(session.dir);
+      if (!built.ok) {
+        return {
+          ok: false,
+          artifactNote: `Artifact build failed: ${built.stderr}\n`,
+        };
+      }
+    } else {
+      return { ok: false, artifactNote: "" };
+    }
   }
 
   try {
     let spec = await jsonRender(session.dir, sessionId, ARTIFACT_PUBLIC_ORIGIN, defaultPayload);
     spec = applyCanvasVisibility(spec, visibility);
-    return { ok: true, spec, artifactNote: "Artifacts ready.\n" };
+    return { ok: true, spec, artifactNote: "Canvas updated from session artifacts.\n" };
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
-    return { ok: false, artifactNote: "Artifacts built but canvas merge failed.\n", error: m };
+    return { ok: false, artifactNote: "Artifacts present but canvas merge failed.\n", error: m };
   }
 }

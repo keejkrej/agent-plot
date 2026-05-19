@@ -60,6 +60,7 @@ body,
 
 body {
   line-height: 1.45;
+  overflow: hidden;
 }
 
 @theme inline {
