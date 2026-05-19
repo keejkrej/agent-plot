@@ -19,7 +19,7 @@ const wsBaseUrl = () => {
 
 export function App() {
   const [transcript, setTranscript] = useState(
-    "Create a session, upload a TIFF, then send a message to rebuild artifacts and refresh the canvas.\n\n",
+    "Create a session, then either upload a TIFF first or send instructions (e.g. hide raw) — preferences apply on upload and on each message.\n\n",
   );
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [spec, setSpec] = useState<Spec | null>(null);
@@ -27,6 +27,8 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsReadyRef = useRef(false);
+  const pendingMessagesRef = useRef<string[]>([]);
 
   const api = useMemo(() => "/api", []);
 
@@ -38,13 +40,24 @@ export function App() {
     const wsUrl = `${wsBaseUrl()}?sessionId=${encodeURIComponent(sessionId)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    wsReadyRef.current = false;
+    ws.onopen = () => {
+      wsReadyRef.current = true;
+      const pending = pendingMessagesRef.current;
+      pendingMessagesRef.current = [];
+      for (const text of pending) {
+        ws.send(JSON.stringify({ type: "user.message", text }));
+      }
+    };
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(String(ev.data)) as WsInbound;
         if (msg.type === "chat.delta") setTranscript((t) => t + msg.text);
         if (msg.type === "canvas.tree") {
           setCanvasError(null);
-          setSpec(msg.spec as Spec);
+          const next = msg.spec as Spec;
+          console.log("[json-render] canvas.tree", next);
+          setSpec(next);
         }
         if (msg.type === "canvas.error") setCanvasError(msg.message);
         if (msg.type === "error") setTranscript((t) => t + `\n[error] ${msg.message}\n`);
@@ -53,9 +66,12 @@ export function App() {
       }
     };
     ws.onclose = () => {
+      wsReadyRef.current = false;
       if (wsRef.current === ws) wsRef.current = null;
     };
     return () => {
+      wsReadyRef.current = false;
+      pendingMessagesRef.current = [];
       ws.close();
       if (wsRef.current === ws) wsRef.current = null;
     };
@@ -74,8 +90,14 @@ export function App() {
     const text = draft.trim();
     if (!text) return;
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setTranscript((t) => t + "\n[ui] WebSocket not connected yet.\n");
+    if (!ws) {
+      setTranscript((t) => t + "\n[ui] No session WebSocket.\n");
+      return;
+    }
+    if (ws.readyState !== WebSocket.OPEN) {
+      pendingMessagesRef.current.push(text);
+      setTranscript((t) => t + "[ui] WebSocket connecting — message queued.\n");
+      setDraft("");
       return;
     }
     ws.send(JSON.stringify({ type: "user.message", text }));
@@ -95,7 +117,9 @@ export function App() {
         return;
       }
       setUploadStatus(`Uploaded ${j.name ?? file.name}`);
-      setTranscript((t) => t + `\n[upload] ${j.name ?? file.name}\n`);
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        setTranscript((t) => t + `\n[upload] ${j.name ?? file.name} (reconnect session to refresh canvas)\n`);
+      }
     },
     [api, sessionId],
   );

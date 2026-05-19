@@ -24,6 +24,7 @@ agent-plot/
 - **Node** 20+
 - **pnpm** 10+
 - **uv** ([install](https://docs.astral.sh/uv/getting-started/installation/)) for Python analysis
+- **Cursor API key** (for the default chat agent) — [Cloud Agents dashboard](https://cursor.com/dashboard/cloud-agents)
 
 ## Setup
 
@@ -37,6 +38,7 @@ uv sync
 From repo root:
 
 ```bash
+export CURSOR_API_KEY="cursor_..."   # required for Cursor SDK agent (see below)
 pnpm dev
 ```
 
@@ -48,9 +50,22 @@ Runs **API** (`@agent-plot/server`, default port **8787**) and **web** (`@agent-
 
 The **web** client renders `canvas.tree` with [`@json-render/react`](https://json-render.dev) and a small in-repo catalog (`Stack`, `Caption`, `PreviewImage`, `LinePlot`, `Histogram`) matching `apps/server/src/starter-canvas.json`.
 
-### Optional remote assistant
+### Chat agent backend
 
-If `AGENT_PLOT_AGENT_URL` is set, each `user.message` first `POST`s JSON `{ "sessionId", "text" }` to that URL and streams the reply into chat. The response may be plain text or JSON with `reply`, `text`, or `message`. Without it, the server uses a **local stub** that runs `describe_tiff` when a TIFF is present.
+Priority for each `user.message`:
+
+| Priority | Env | Behavior |
+|----------|-----|----------|
+| 1 | `CURSOR_API_KEY` | **Cursor SDK** (`@cursor/sdk`) local agent with `cwd` = session directory (multi-turn via `Agent.resume`) |
+| 2 | `AGENT_PLOT_AGENT_URL` | Custom HTTP `POST { sessionId, text }` → plain text or JSON `{ reply }` / `{ text }` / `{ message }` |
+| 3 | *(none)* | **Stub** — `describe_tiff` + canvas visibility note |
+
+Optional:
+
+- `AGENT_PLOT_CURSOR_MODEL` — model id (default `composer-2`)
+- `PUBLIC_ORIGIN` — prefix for artifact URLs when not using same-origin `/api/...`
+
+Canvas panel hide/show (raw, FFT, charts) is still applied server-side from your message wording; the SDK agent handles analysis chat.
 
 ## Scripts
 

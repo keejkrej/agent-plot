@@ -64,8 +64,9 @@ export function mergePayloadIntoSpec(
   // stats series filled synchronously by caller before merge — we need async; split API
 
   const artifactUrl = (rel: string) => {
-    const relClean = rel.replace(/^\.?\//, "");
-    return `${publicOrigin}/api/sessions/${sessionId}/artifacts/${relClean}`;
+    const relClean = rel.replace(/^\.?\//, "").replace(/^artifacts\//, "");
+    const path = `/api/sessions/${sessionId}/artifacts/${relClean}`;
+    return publicOrigin ? `${publicOrigin.replace(/\/$/, "")}${path}` : path;
   };
 
   for (const key of ["raw", "fft"]) {

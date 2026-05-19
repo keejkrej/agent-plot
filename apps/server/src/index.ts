@@ -6,13 +6,20 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assistantReply } from "./assistant.js";
-import { buildArtifacts, describeTiff } from "./pythonRun.js";
-import { jsonRender } from "./mergeCanvas.js";
-import { createSession, getSession, saveUpload, sessionsRoot } from "./session.js";
+import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.js";
+import { refreshSessionCanvas } from "./canvasRefresh.js";
+import { describeTiff } from "./pythonRun.js";
+import {
+  createSession,
+  getSession,
+  readCanvasVisibility,
+  saveUpload,
+  sessionsRoot,
+  writeCanvasVisibility,
+} from "./session.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
-const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? `http://localhost:${PORT}`;
 
 const app = new Hono();
 
@@ -21,7 +28,7 @@ const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173", PUBLIC_ORIGIN],
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173", `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`],
     allowHeaders: ["*"],
     allowMethods: ["*"],
   }),
@@ -45,6 +52,18 @@ app.post("/api/sessions/:id/upload", async (c) => {
   }
   const buf = Buffer.from(await file.arrayBuffer());
   await saveUpload(session, buf, file.name ?? "input.tif");
+
+  const refreshed = await refreshSessionCanvas(session, id);
+  broadcast(id, { type: "chat.delta", text: `\n[upload] ${file.name ?? "input.tif"}\n` });
+  broadcast(id, { type: "chat.delta", text: refreshed.artifactNote });
+  if (refreshed.ok) {
+    broadcast(id, { type: "canvas.tree", spec: refreshed.spec });
+    broadcast(id, { type: "chat.delta", text: "Canvas updated (json_render).\n" });
+  } else if (refreshed.error) {
+    broadcast(id, { type: "canvas.error", message: refreshed.error });
+    broadcast(id, { type: "chat.delta", text: `Error: ${refreshed.error}\n` });
+  }
+
   return c.json({ ok: true, name: file.name });
 });
 
@@ -138,30 +157,33 @@ app.get(
           }
           const text = msg.text ?? "";
           broadcast(sessionId, { type: "chat.delta", text: `\nYou: ${text}\n` });
-          const reply = await assistantReply(sessionId, session.dir, text);
-          broadcast(sessionId, { type: "chat.delta", text: `\n${reply}\n\n` });
-          try {
-            const built = await buildArtifacts(session.dir);
-            if (!built.ok) {
-              broadcast(sessionId, {
-                type: "chat.delta",
-                text: `Artifact build skipped/failed: ${built.stderr}\n`,
-              });
-            } else {
-              broadcast(sessionId, { type: "chat.delta", text: `Artifacts ready.\n` });
-            }
-            const defaultPayload = {
-              raw: "./artifacts/raw_preview.png",
-              fft: "./artifacts/fft_mag.png",
-              stats: "./artifacts/stats.csv",
-            };
-            const spec = await jsonRender(session.dir, sessionId, PUBLIC_ORIGIN, defaultPayload);
-            broadcast(sessionId, { type: "canvas.tree", spec });
-            broadcast(sessionId, { type: "chat.delta", text: `Canvas updated (json_render).\n` });
-          } catch (e) {
-            const m = e instanceof Error ? e.message : String(e);
-            broadcast(sessionId, { type: "canvas.error", message: m });
-            broadcast(sessionId, { type: "chat.delta", text: `Error: ${m}\n` });
+          const visibility = mergeCanvasVisibility(
+            await readCanvasVisibility(session),
+            parseCanvasIntentDelta(text),
+          );
+          await writeCanvasVisibility(session, visibility);
+          let streamed = false;
+          broadcast(sessionId, { type: "chat.delta", text: "\n" });
+          await assistantReply(session, session.dir, text, visibility, {
+            onDelta: (chunk) => {
+              streamed = true;
+              broadcast(sessionId, { type: "chat.delta", text: chunk });
+            },
+          });
+          broadcast(sessionId, { type: "chat.delta", text: streamed ? "\n\n" : "\n(no response)\n\n" });
+          const refreshed = await refreshSessionCanvas(session, sessionId);
+          broadcast(sessionId, { type: "chat.delta", text: refreshed.artifactNote });
+          if (refreshed.ok) {
+            broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
+            broadcast(sessionId, { type: "chat.delta", text: "Canvas updated (json_render).\n" });
+          } else if (refreshed.error) {
+            broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
+            broadcast(sessionId, { type: "chat.delta", text: `Error: ${refreshed.error}\n` });
+          } else if (Object.keys(parseCanvasIntentDelta(text)).length > 0) {
+            broadcast(sessionId, {
+              type: "chat.delta",
+              text: "Canvas preferences saved — upload a TIFF (or send another message after upload) to apply them.\n",
+            });
           }
           return;
         }
@@ -171,18 +193,12 @@ app.get(
             ws.send(JSON.stringify({ type: "error", message: "unknown session" }));
             return;
           }
-          try {
-            const spec = await jsonRender(
-              session.dir,
-              sessionId,
-              PUBLIC_ORIGIN,
-              msg.payload ?? {},
-            );
-            broadcast(sessionId, { type: "canvas.tree", spec });
+          const refreshed = await refreshSessionCanvas(session, sessionId);
+          if (refreshed.ok) {
+            broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
             broadcast(sessionId, { type: "tool.end", name: "json_render" });
-          } catch (e) {
-            const m = e instanceof Error ? e.message : String(e);
-            broadcast(sessionId, { type: "canvas.error", message: m });
+          } else if (refreshed.error) {
+            broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
           }
           return;
         }
@@ -199,8 +215,18 @@ const server = serve(
     port: PORT,
   },
   (info) => {
-    console.log(`Server listening on ${PUBLIC_ORIGIN} (port ${info.port})`);
+    console.log(`Server listening on http://localhost:${info.port}`);
   },
 );
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} is already in use. Stop the other process (e.g. lsof -ti :${PORT} | xargs kill) or set PORT to another value.`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
 
 injectWebSocket(server);

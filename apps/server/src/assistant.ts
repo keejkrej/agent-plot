@@ -1,4 +1,7 @@
+import { describeVisibility, type CanvasVisibility } from "./canvasIntent.js";
+import { cursorAssistantReply, formatCursorAgentError, isCursorAgentConfigured } from "./cursorAgent.js";
 import { describeTiff } from "./pythonRun.js";
+import type { Session } from "./session.js";
 
 type DescribeOk = {
   ok: true;
@@ -49,26 +52,20 @@ async function remoteAgent(url: string, sessionId: string, userText: string): Pr
   return (await res.text()).trim();
 }
 
-/**
- * Optional HTTP agent (`AGENT_PLOT_AGENT_URL`): POST JSON `{ sessionId, text }`, response JSON `{ reply }` / `{ text }` or plain text.
- * Otherwise a local stub uses `describe_tiff` when an input file exists.
- */
-export async function assistantReply(sessionId: string, sessionDir: string, userText: string): Promise<string> {
-  const url = process.env.AGENT_PLOT_AGENT_URL?.trim();
-  if (url) {
-    try {
-      return await remoteAgent(url, sessionId, userText);
-    } catch (e) {
-      return `[agent] ${e instanceof Error ? e.message : String(e)}`;
-    }
-  }
-
+async function stubAssistantReply(
+  sessionDir: string,
+  userText: string,
+  visibility: CanvasVisibility,
+): Promise<string> {
+  const visNote = describeVisibility(visibility);
   const d = await describeTiff(sessionDir);
   if (d.ok && isDescribeOk(d.data)) {
     const m = d.data;
     return [
       `Assistant (stub): ${m.path} — shape [${m.shape.join("×")}], dtype ${m.dtype}.`,
       `Value range about ${m.min.toFixed(3)}–${m.max.toFixed(3)} (p1–p99: ${m.p1.toFixed(3)}–${m.p99.toFixed(3)}).`,
+      "",
+      visNote,
       "",
       `Your message: ${userText.slice(0, 800)}${userText.length > 800 ? "…" : ""}`,
     ].join("\n");
@@ -78,8 +75,55 @@ export async function assistantReply(sessionId: string, sessionDir: string, user
     "Assistant (stub): no TIFF in this session yet, or describe failed.",
     d.ok ? "" : `(${d.stderr})`,
     "",
+    visNote,
+    "",
     `Your message: ${userText.slice(0, 400)}${userText.length > 400 ? "…" : ""}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export type AssistantSink = {
+  onDelta?: (text: string) => void;
+};
+
+/**
+ * Chat backend priority:
+ * 1. `CURSOR_API_KEY` — Cursor SDK local agent (`@cursor/sdk`) with cwd = session dir
+ * 2. `AGENT_PLOT_AGENT_URL` — custom HTTP agent
+ * 3. Local stub (`describe_tiff` + visibility note)
+ */
+export async function assistantReply(
+  session: Session,
+  sessionDir: string,
+  userText: string,
+  visibility: CanvasVisibility,
+  sink?: AssistantSink,
+): Promise<string> {
+  if (isCursorAgentConfigured()) {
+    try {
+      return await cursorAssistantReply(session, sessionDir, userText, visibility, sink?.onDelta);
+    } catch (e) {
+      const msg = formatCursorAgentError(e);
+      sink?.onDelta?.(msg);
+      return msg;
+    }
+  }
+
+  const url = process.env.AGENT_PLOT_AGENT_URL?.trim();
+  if (url) {
+    try {
+      const reply = await remoteAgent(url, session.id, userText);
+      sink?.onDelta?.(reply);
+      return reply;
+    } catch (e) {
+      const msg = `[agent] ${e instanceof Error ? e.message : String(e)}`;
+      sink?.onDelta?.(msg);
+      return msg;
+    }
+  }
+
+  const reply = await stubAssistantReply(sessionDir, userText, visibility);
+  sink?.onDelta?.(reply);
+  return reply;
 }
