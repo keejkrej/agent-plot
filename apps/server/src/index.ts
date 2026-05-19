@@ -6,12 +6,24 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assistantReply } from "./assistant.js";
+import {
+  broadcastActivityEnd,
+  broadcastActivityStart,
+  broadcastAssistantDelta,
+  broadcastAssistantEnd,
+  broadcastAssistantStart,
+  broadcastChatUser,
+  broadcastSystemNote,
+  setChatBroadcastSender,
+} from "./chatBroadcast.js";
+import { readChatHistory } from "./chatHistory.js";
 import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.js";
 import { refreshSessionCanvas } from "./canvasRefresh.js";
 import { describeTiff } from "./pythonRun.js";
 import {
   createSession,
   getSession,
+  listSessions,
   readCanvasVisibility,
   saveUpload,
   sessionsRoot,
@@ -36,9 +48,22 @@ app.use(
 
 app.get("/health", (c) => c.json({ ok: true }));
 
+app.get("/api/sessions", async (c) => {
+  const sessions = await listSessions();
+  return c.json({ sessions });
+});
+
 app.post("/api/sessions", async (c) => {
   const s = await createSession();
   return c.json({ id: s.id });
+});
+
+app.get("/api/sessions/:id/chat", async (c) => {
+  const id = c.req.param("id");
+  const session = await getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const history = await readChatHistory(session);
+  return c.json(history);
 });
 
 app.post("/api/sessions/:id/upload", async (c) => {
@@ -51,20 +76,48 @@ app.post("/api/sessions/:id/upload", async (c) => {
     return c.json({ error: "expected file field (binary)" }, 400);
   }
   const buf = Buffer.from(await file.arrayBuffer());
-  await saveUpload(session, buf, file.name ?? "input.tif");
+  const fileName = file.name ?? "input.tif";
+  await saveUpload(session, buf, fileName);
+
+  let history = await readChatHistory(session);
+  const { history: afterUser } = await broadcastChatUser(
+    session,
+    `[upload] ${fileName}`,
+  );
+  history = afterUser;
+
+  const { activityId, history: afterActStart } = await broadcastActivityStart(
+    session,
+    history,
+    "Building artifacts",
+  );
+  history = afterActStart;
 
   const refreshed = await refreshSessionCanvas(session, id, { buildIfMissing: true });
-  broadcast(id, { type: "chat.delta", text: `\n[upload] ${file.name ?? "input.tif"}\n` });
-  broadcast(id, { type: "chat.delta", text: refreshed.artifactNote });
-  if (refreshed.ok) {
-    broadcast(id, { type: "canvas.tree", spec: refreshed.spec });
-    broadcast(id, { type: "chat.delta", text: "Canvas updated (json_render).\n" });
-  } else if (refreshed.error) {
-    broadcast(id, { type: "canvas.error", message: refreshed.error });
-    broadcast(id, { type: "chat.delta", text: `Error: ${refreshed.error}\n` });
+
+  if (refreshed.artifactNote) {
+    history = await broadcastSystemNote(session, history, refreshed.artifactNote.trim());
   }
 
-  return c.json({ ok: true, name: file.name });
+  if (refreshed.ok) {
+    broadcast(id, { type: "canvas.tree", spec: refreshed.spec });
+    history = await broadcastActivityEnd(session, history, activityId, {
+      detail: "Canvas updated",
+      status: "done",
+    });
+    broadcast(id, { type: "tool.end", name: "json_render" });
+  } else if (refreshed.error) {
+    broadcast(id, { type: "canvas.error", message: refreshed.error });
+    history = await broadcastActivityEnd(session, history, activityId, {
+      detail: refreshed.error,
+      status: "error",
+    });
+    history = await broadcastSystemNote(session, history, `Error: ${refreshed.error}`);
+  } else {
+    history = await broadcastActivityEnd(session, history, activityId, { status: "done" });
+  }
+
+  return c.json({ ok: true, name: fileName });
 });
 
 app.get("/api/sessions/:id/artifacts/*", async (c) => {
@@ -114,7 +167,97 @@ function broadcast(sessionId: string, msg: unknown) {
   }
 }
 
+setChatBroadcastSender(broadcast);
+
 const sockets = new Map<string, Set<{ send: (data: string) => void }>>();
+
+async function handleUserMessage(sessionId: string, text: string): Promise<void> {
+  const session = await getSession(sessionId);
+  if (!session) {
+    broadcast(sessionId, { type: "error", message: "unknown session" });
+    return;
+  }
+
+  const visibility = mergeCanvasVisibility(
+    await readCanvasVisibility(session),
+    parseCanvasIntentDelta(text),
+  );
+  await writeCanvasVisibility(session, visibility);
+
+  let { history } = await broadcastChatUser(session, text);
+
+  const { activityId: analyzeId, history: afterAnalyzeStart } = await broadcastActivityStart(
+    session,
+    history,
+    "Analyzing data",
+  );
+  history = afterAnalyzeStart;
+
+  const { assistantId, history: afterAssistantStart } = await broadcastAssistantStart(
+    session,
+    history,
+  );
+  history = afterAssistantStart;
+
+  let streamed = false;
+  await assistantReply(session, session.dir, text, visibility, {
+    onDelta: async (chunk) => {
+      streamed = true;
+      history = await broadcastAssistantDelta(session, history, assistantId, chunk);
+    },
+  });
+
+  if (!streamed) {
+    history = await broadcastAssistantDelta(
+      session,
+      history,
+      assistantId,
+      "(no response)",
+    );
+  }
+
+  history = await broadcastAssistantEnd(session, history, assistantId);
+  history = await broadcastActivityEnd(session, history, analyzeId, { status: "done" });
+
+  const { activityId: canvasId, history: afterCanvasStart } = await broadcastActivityStart(
+    session,
+    history,
+    "Refreshing canvas",
+  );
+  history = afterCanvasStart;
+
+  const refreshed = await refreshSessionCanvas(session, sessionId);
+  if (refreshed.artifactNote) {
+    history = await broadcastSystemNote(session, history, refreshed.artifactNote.trim());
+  }
+  if (refreshed.ok) {
+    broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
+    history = await broadcastActivityEnd(session, history, canvasId, {
+      detail: "Canvas updated",
+      status: "done",
+    });
+    broadcast(sessionId, { type: "tool.end", name: "json_render" });
+  } else if (refreshed.error) {
+    broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
+    history = await broadcastActivityEnd(session, history, canvasId, {
+      detail: refreshed.error,
+      status: "error",
+    });
+    history = await broadcastSystemNote(session, history, `Error: ${refreshed.error}`);
+  } else if (Object.keys(parseCanvasIntentDelta(text)).length > 0) {
+    history = await broadcastActivityEnd(session, history, canvasId, {
+      detail: "Preferences saved",
+      status: "done",
+    });
+    history = await broadcastSystemNote(
+      session,
+      history,
+      "Canvas preferences saved. Ask the agent to run build_artifacts when you want previews.",
+    );
+  } else {
+    history = await broadcastActivityEnd(session, history, canvasId, { status: "done" });
+  }
+}
 
 app.get(
   "/ws",
@@ -156,36 +299,7 @@ app.get(
             return;
           }
           const text = msg.text ?? "";
-          broadcast(sessionId, { type: "chat.delta", text: `\nYou: ${text}\n` });
-          const visibility = mergeCanvasVisibility(
-            await readCanvasVisibility(session),
-            parseCanvasIntentDelta(text),
-          );
-          await writeCanvasVisibility(session, visibility);
-          let streamed = false;
-          broadcast(sessionId, { type: "chat.delta", text: "\n" });
-          await assistantReply(session, session.dir, text, visibility, {
-            onDelta: (chunk) => {
-              streamed = true;
-              broadcast(sessionId, { type: "chat.delta", text: chunk });
-            },
-          });
-          broadcast(sessionId, { type: "chat.delta", text: streamed ? "\n\n" : "\n(no response)\n\n" });
-          const refreshed = await refreshSessionCanvas(session, sessionId);
-          if (refreshed.artifactNote) {
-            broadcast(sessionId, { type: "chat.delta", text: refreshed.artifactNote });
-          }
-          if (refreshed.ok) {
-            broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
-          } else if (refreshed.error) {
-            broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
-            broadcast(sessionId, { type: "chat.delta", text: `Error: ${refreshed.error}\n` });
-          } else if (Object.keys(parseCanvasIntentDelta(text)).length > 0) {
-            broadcast(sessionId, {
-              type: "chat.delta",
-              text: "Canvas preferences saved. Ask the agent to run build_artifacts when you want previews.\n",
-            });
-          }
+          await handleUserMessage(sessionId, text);
           return;
         }
         if (msg.type === "json_render") {
@@ -194,12 +308,27 @@ app.get(
             ws.send(JSON.stringify({ type: "error", message: "unknown session" }));
             return;
           }
+          let history = await readChatHistory(session);
+          const { activityId, history: afterStart } = await broadcastActivityStart(
+            session,
+            history,
+            "Rendering canvas",
+          );
+          history = afterStart;
           const refreshed = await refreshSessionCanvas(session, sessionId);
           if (refreshed.ok) {
             broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
+            history = await broadcastActivityEnd(session, history, activityId, {
+              detail: "Canvas updated",
+              status: "done",
+            });
             broadcast(sessionId, { type: "tool.end", name: "json_render" });
           } else if (refreshed.error) {
             broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
+            history = await broadcastActivityEnd(session, history, activityId, {
+              detail: refreshed.error,
+              status: "error",
+            });
           }
           return;
         }

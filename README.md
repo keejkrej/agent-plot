@@ -44,9 +44,11 @@ pnpm dev
 
 Runs **API** (`@agent-plot/server`, default port **8787**) and **web** (`@agent-plot/web`, **5173**) in parallel. The web app proxies `/api` and `/ws` to the API.
 
+- `GET /api/sessions` — list sessions on disk  
 - `POST /api/sessions` — create session  
+- `GET /api/sessions/:id/chat` — persisted chat history (`messages`, `activities`)  
 - `POST /api/sessions/:id/upload` — multipart field `file` (TIFF)  
-- `GET /ws?sessionId=…` — WebSocket (send `{ "type": "user.message", "text": "…" }` to run the assistant, rebuild artifacts, and broadcast `canvas.tree`)
+- `GET /ws?sessionId=…` — WebSocket (`user.message` runs the assistant; server emits structured `chat.*`, `activity.*`, `canvas.tree`)
 
 The **web** client renders `canvas.tree` with [`@json-render/react`](https://json-render.dev) and a small in-repo catalog (`Stack`, `Caption`, `PreviewImage`, `LinePlot`, `Histogram`) matching `apps/server/src/starter-canvas.json`.
 

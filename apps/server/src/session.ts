@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, copyFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, copyFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,40 @@ export async function getSession(id: string): Promise<Session | null> {
     return { id, dir };
   } catch {
     return null;
+  }
+}
+
+export type SessionListEntry = {
+  id: string;
+  title: string;
+  updatedAt: string;
+};
+
+export async function listSessions(): Promise<SessionListEntry[]> {
+  try {
+    const names = await readdir(ROOT);
+    const entries: SessionListEntry[] = [];
+    for (const id of names) {
+      const dir = path.join(ROOT, id);
+      const session = await getSession(id);
+      if (!session) continue;
+      let updatedAt = new Date(0).toISOString();
+      try {
+        const st = await stat(dir);
+        updatedAt = st.mtime.toISOString();
+      } catch {
+        /* ignore */
+      }
+      entries.push({
+        id,
+        title: `Session ${id.slice(0, 8)}`,
+        updatedAt,
+      });
+    }
+    entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return entries;
+  } catch {
+    return [];
   }
 }
 

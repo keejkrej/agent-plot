@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@agent-plot/contracts": "workspace:*",
     "@cursor/sdk": "^1.0.13",
     "@hono/node-server": "^1.19.0",
     "@hono/node-ws": "^1.1.1",

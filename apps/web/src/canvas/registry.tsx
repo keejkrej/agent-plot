@@ -1,13 +1,20 @@
 import { defineRegistry } from "@json-render/react";
 import { plotCatalog } from "./catalog.js";
 
+const plotSurface = {
+  display: "block" as const,
+  background: "var(--muted)",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+};
+
 function LinePlotSvg({ x, y, title }: { x: number[]; y: number[]; title?: string }) {
   const w = 320;
   const h = 180;
   const pad = 36;
   if (x.length === 0 || y.length === 0 || x.length !== y.length) {
     return (
-      <div style={{ fontSize: 12, color: "#888" }}>
+      <div className="text-muted-foreground text-xs">
         {title ? `${title}: ` : ""}No plot data.
       </div>
     );
@@ -22,13 +29,11 @@ function LinePlotSvg({ x, y, title }: { x: number[]; y: number[]; title?: string
   const sy = (v: number) => h - pad - ((v - minY) / dy) * (h - pad * 2);
   const d = x.map((xi, i) => `${i === 0 ? "M" : "L"} ${sx(xi).toFixed(1)} ${sy(y[i]!).toFixed(1)}`).join(" ");
   return (
-    <figure style={{ margin: 0 }}>
-      {title ? (
-        <figcaption style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{title}</figcaption>
-      ) : null}
-      <svg width={w} height={h} style={{ display: "block", background: "#0d1117", borderRadius: 8 }}>
+    <figure className="m-0">
+      {title ? <figcaption className="mb-1.5 font-semibold text-sm">{title}</figcaption> : null}
+      <svg width={w} height={h} style={plotSurface}>
         <title>{title ?? "Line plot"}</title>
-        <path d={d} fill="none" stroke="#58a6ff" strokeWidth={1.5} />
+        <path d={d} fill="none" stroke="var(--chart-1)" strokeWidth={1.5} />
       </svg>
     </figure>
   );
@@ -40,18 +45,16 @@ function HistogramSvg({ x, y, title }: { x: number[]; y: number[]; title?: strin
   const pad = 36;
   if (x.length === 0 || y.length === 0 || x.length !== y.length) {
     return (
-      <div style={{ fontSize: 12, color: "#888" }}>
+      <div className="text-muted-foreground text-xs">
         {title ? `${title}: ` : ""}No histogram data.
       </div>
     );
   }
   const maxY = Math.max(...y, 1);
   return (
-    <figure style={{ margin: 0 }}>
-      {title ? (
-        <figcaption style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{title}</figcaption>
-      ) : null}
-      <svg width={w} height={h} style={{ display: "block", background: "#0d1117", borderRadius: 8 }}>
+    <figure className="m-0">
+      {title ? <figcaption className="mb-1.5 font-semibold text-sm">{title}</figcaption> : null}
+      <svg width={w} height={h} style={plotSurface}>
         <title>{title ?? "Histogram"}</title>
         {x.map((_, i) => {
           const bh = ((y[i] ?? 0) / maxY) * (h - pad * 2);
@@ -60,7 +63,17 @@ function HistogramSvg({ x, y, title }: { x: number[]; y: number[]; title?: strin
           const bx = pad + i * step;
           const bw = Math.max(1, step * 0.85);
           const by = h - pad - bh;
-          return <rect key={i} x={bx} y={by} width={bw} height={bh} fill="#3fb950" opacity={0.85} />;
+          return (
+            <rect
+              key={i}
+              x={bx}
+              y={by}
+              width={bw}
+              height={bh}
+              fill="var(--chart-2)"
+              opacity={0.85}
+            />
+          );
         })}
       </svg>
     </figure>
@@ -74,8 +87,8 @@ export const { registry: plotRegistry } = defineRegistry(plotCatalog, {
       const gap = props.gap ?? 12;
       return (
         <div
+          className="flex"
           style={{
-            display: "flex",
             flexDirection: dir,
             gap,
             alignItems: dir === "row" ? "flex-start" : "stretch",
@@ -86,17 +99,17 @@ export const { registry: plotRegistry } = defineRegistry(plotCatalog, {
       );
     },
     Caption: ({ props }) => (
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#e6edf3" }}>{props.text}</h2>
+      <h2 className="m-0 font-semibold text-base text-foreground">{props.text}</h2>
     ),
     PreviewImage: ({ props }) => (
-      <figure style={{ margin: 0, maxWidth: 280 }}>
+      <figure className="m-0 max-w-[280px]">
         <img
           src={props.src}
           alt={props.caption ?? "preview"}
-          style={{ width: "100%", height: "auto", borderRadius: 8, display: "block", border: "1px solid #30363d" }}
+          className="block w-full rounded-lg border border-border"
         />
         {props.caption ? (
-          <figcaption style={{ fontSize: 11, color: "#8b949e", marginTop: 6 }}>{props.caption}</figcaption>
+          <figcaption className="mt-1.5 text-muted-foreground text-xs">{props.caption}</figcaption>
         ) : null}
       </figure>
     ),
