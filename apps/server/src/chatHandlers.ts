@@ -2,7 +2,7 @@ import type { PathAttachment } from "@agent-plot/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import { assistantReply } from "./assistant.ts";
+import { AgentRunner } from "./agent/Services/AgentRunner.ts";
 import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.ts";
 import { refreshSessionCanvas } from "./canvasRefresh.ts";
 import { buildAgentMessageText } from "./pathAttachments.ts";
@@ -18,6 +18,7 @@ export const handleUserMessage = Effect.fn("chatHandlers.handleUserMessage")(fun
   const wsHub = yield* WsHub;
   const sessionStore = yield* SessionStore;
   const sessionChat = yield* SessionChat;
+  const agentRunner = yield* AgentRunner;
 
   const session = yield* sessionStore.getSession(sessionId);
   if (Option.isNone(session)) {
@@ -47,27 +48,14 @@ export const handleUserMessage = Effect.fn("chatHandlers.handleUserMessage")(fun
   );
   history = afterAssistantStart;
 
-  const agentPersistence = {
-    readAgentId: (s: typeof session.value) =>
-      Effect.runPromise(
-        sessionStore.readSessionAgentId(s).pipe(Effect.map(Option.getOrNull)),
-      ).then((id) => id ?? undefined),
-    writeAgentId: (s: typeof session.value, agentId: string) =>
-      Effect.runPromise(sessionStore.writeSessionAgentId(s, agentId)),
-  };
-
-  let streamed = false;
-  yield* Effect.promise(() =>
-    assistantReply(session.value, session.value.dir, agentText, visibility, {
-      onDelta: async (chunk) => {
-        streamed = true;
-        history = await Effect.runPromise(
-          sessionChat.broadcastAssistantDelta(session.value, history, assistantId, chunk),
-        );
-      },
-      agentPersistence,
-    }),
-  );
+  const { history: afterAgent, streamed } = yield* agentRunner.runAssistantTurn({
+    session: session.value,
+    history,
+    assistantId,
+    agentText,
+    visibility,
+  });
+  history = afterAgent;
 
   if (!streamed) {
     history = yield* sessionChat.broadcastAssistantDelta(

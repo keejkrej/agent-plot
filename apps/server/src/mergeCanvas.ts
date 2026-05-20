@@ -1,14 +1,17 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "csv-parse/sync";
-import { z } from "zod";
+import {
+  decodeCanvasPayloadRecord,
+  type CanvasSpec,
+} from "@agent-plot/contracts";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 
-const PayloadSchema = z.record(z.string(), z.unknown());
+import type { Session } from "./session/Services/SessionStore.ts";
+import { SessionStore } from "./session/Services/SessionStore.ts";
 
-export type CanvasSpec = {
-  root: string;
-  elements: Record<string, unknown>;
-};
+export type { CanvasSpec };
 
 type ElementNode = {
   type?: string;
@@ -16,8 +19,22 @@ type ElementNode = {
   children?: string[];
 };
 
+type StatsSeries = {
+  lineX: number[];
+  lineY: number[];
+  histX: number[];
+  histY: number[];
+  rowMeanX: number[];
+  rowMeanY: number[];
+};
+
 function isPayloadRef(v: unknown): v is { $payload: string } {
-  return typeof v === "object" && v !== null && "$payload" in v && typeof (v as { $payload: unknown }).$payload === "string";
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "$payload" in v &&
+    typeof (v as { $payload: unknown }).$payload === "string"
+  );
 }
 
 function resolvePath(sessionDir: string, p: string) {
@@ -36,20 +53,19 @@ function formatNum(n: unknown): string {
   return String(n ?? "");
 }
 
-export async function loadStatsSeries(
-  sessionDir: string,
-  statsRelative: string,
-): Promise<{
-  lineX: number[];
-  lineY: number[];
-  histX: number[];
-  histY: number[];
-  rowMeanX: number[];
-  rowMeanY: number[];
-}> {
-  const abs = resolvePath(sessionDir, statsRelative);
-  const raw = await readFile(abs, "utf-8");
-  const rows = parse(raw, { columns: true, skip_empty_lines: true }) as { kind: string; x: string; y: string }[];
+const readSessionRelativeFile = (sessionDir: string, relativePath: string) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const abs = resolvePath(sessionDir, relativePath);
+    return yield* fileSystem.readFileString(abs);
+  });
+
+function parseStatsSeries(raw: string): StatsSeries {
+  const rows = parse(raw, { columns: true, skip_empty_lines: true }) as {
+    kind: string;
+    x: string;
+    y: string;
+  }[];
   const lineX: number[] = [];
   const lineY: number[] = [];
   const histX: number[] = [];
@@ -74,6 +90,9 @@ export async function loadStatsSeries(
   return { lineX, lineY, histX, histY, rowMeanX, rowMeanY };
 }
 
+export const loadStatsSeriesEffect = (sessionDir: string, statsRelative: string) =>
+  readSessionRelativeFile(sessionDir, statsRelative).pipe(Effect.map(parseStatsSeries));
+
 type MetaFile = {
   shape?: number[];
   dtype?: string;
@@ -86,9 +105,7 @@ type MetaFile = {
   sliceIndex?: number;
 };
 
-export async function loadMetaPayload(sessionDir: string, metaRelative: string) {
-  const abs = resolvePath(sessionDir, metaRelative);
-  const raw = await readFile(abs, "utf-8");
+function parseMetaPayload(raw: string) {
   const meta = JSON.parse(raw) as MetaFile;
   const shape = Array.isArray(meta.shape) ? meta.shape : [];
   const shapeStr = shape.length ? shape.join("×") : "—";
@@ -113,6 +130,9 @@ export async function loadMetaPayload(sessionDir: string, metaRelative: string) 
   };
 }
 
+export const loadMetaPayloadEffect = (sessionDir: string, metaRelative: string) =>
+  readSessionRelativeFile(sessionDir, metaRelative).pipe(Effect.map(parseMetaPayload));
+
 type SummaryFile = {
   warnings?: string[];
   histogramPeak?: number;
@@ -120,11 +140,11 @@ type SummaryFile = {
   table?: { columns?: string[]; rows?: string[][] };
 };
 
-export async function loadSummaryPayload(sessionDir: string, summaryRelative: string) {
-  const abs = resolvePath(sessionDir, summaryRelative);
-  const raw = await readFile(abs, "utf-8");
+function parseSummaryPayload(raw: string) {
   const summary = JSON.parse(raw) as SummaryFile;
-  const warnings = Array.isArray(summary.warnings) ? summary.warnings.filter((w) => typeof w === "string") : [];
+  const warnings = Array.isArray(summary.warnings)
+    ? summary.warnings.filter((w) => typeof w === "string")
+    : [];
   const table = summary.table;
   const columns = Array.isArray(table?.columns) ? table.columns.map(String) : ["Metric", "Value"];
   const rows = Array.isArray(table?.rows)
@@ -138,63 +158,70 @@ export async function loadSummaryPayload(sessionDir: string, summaryRelative: st
   };
 }
 
-export async function buildAugmentedPayload(
+const emptySummaryPayload = {
+  summaryWarnings: [] as string[],
+  summaryAlertMessage: "",
+  summaryTableColumns: ["Metric", "Value"],
+  summaryTableRows: [] as string[][],
+};
+
+export const loadSummaryPayloadEffect = (sessionDir: string, summaryRelative: string) =>
+  readSessionRelativeFile(sessionDir, summaryRelative).pipe(Effect.map(parseSummaryPayload));
+
+export const buildAugmentedPayloadEffect = (
   sessionDir: string,
   sessionId: string,
   publicOrigin: string,
   payload: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const augmented: Record<string, unknown> = { ...payload };
+) =>
+  Effect.gen(function* () {
+    const augmented: Record<string, unknown> = { ...payload };
 
-  const artifactUrl = (rel: string) => {
-    const relClean = rel.replace(/^\.?\//, "").replace(/^artifacts\//, "");
-    const artifactPath = `/api/sessions/${sessionId}/artifacts/${relClean}`;
-    return publicOrigin ? `${publicOrigin.replace(/\/$/, "")}${artifactPath}` : artifactPath;
-  };
+    const artifactUrl = (rel: string) => {
+      const relClean = rel.replace(/^\.?\//, "").replace(/^artifacts\//, "");
+      const artifactPath = `/api/sessions/${sessionId}/artifacts/${relClean}`;
+      return publicOrigin ? `${publicOrigin.replace(/\/$/, "")}${artifactPath}` : artifactPath;
+    };
 
-  for (const key of ["raw", "fft"]) {
-    const v = augmented[key];
-    if (typeof v === "string") {
-      augmented[key] = artifactUrl(v);
+    for (const key of ["raw", "fft"]) {
+      const v = augmented[key];
+      if (typeof v === "string") {
+        augmented[key] = artifactUrl(v);
+      }
     }
-  }
 
-  const statsRel =
-    typeof augmented.stats === "string" ? String(augmented.stats) : "./artifacts/stats.csv";
-  const series = await loadStatsSeries(sessionDir, statsRel);
-  Object.assign(augmented, series);
+    const statsRel =
+      typeof augmented.stats === "string" ? String(augmented.stats) : "./artifacts/stats.csv";
+    const series = yield* loadStatsSeriesEffect(sessionDir, statsRel);
+    Object.assign(augmented, series);
 
-  const metaRel =
-    typeof augmented.meta === "string" ? String(augmented.meta) : "./artifacts/meta.json";
-  try {
-    const metaPayload = await loadMetaPayload(sessionDir, metaRel);
-    Object.assign(augmented, metaPayload);
-  } catch {
-    // meta.json optional for legacy sessions
-  }
+    const metaRel =
+      typeof augmented.meta === "string" ? String(augmented.meta) : "./artifacts/meta.json";
+    const metaPayload = yield* loadMetaPayloadEffect(sessionDir, metaRel).pipe(Effect.option);
+    if (Option.isSome(metaPayload)) {
+      Object.assign(augmented, metaPayload.value);
+    }
 
-  const summaryRel =
-    typeof augmented.summary === "string"
-      ? String(augmented.summary)
-      : "./artifacts/summary.json";
-  try {
-    const summaryPayload = await loadSummaryPayload(sessionDir, summaryRel);
+    const summaryRel =
+      typeof augmented.summary === "string"
+        ? String(augmented.summary)
+        : "./artifacts/summary.json";
+    const summaryPayload = yield* loadSummaryPayloadEffect(sessionDir, summaryRel).pipe(
+      Effect.catch(() => Effect.succeed(emptySummaryPayload)),
+    );
     Object.assign(augmented, summaryPayload);
-  } catch {
-    augmented.summaryWarnings = [];
-    augmented.summaryAlertMessage = "";
-    augmented.summaryTableColumns = ["Metric", "Value"];
-    augmented.summaryTableRows = [];
-  }
 
-  return augmented;
-}
+    return augmented;
+  });
 
 export function mergePayloadIntoSpec(template: CanvasSpec, payload: Record<string, unknown>): CanvasSpec {
-  const parsed = PayloadSchema.safeParse(payload);
-  if (!parsed.success) throw new Error(`invalid payload: ${parsed.error.message}`);
-
-  const augmented = parsed.data;
+  let augmented: Record<string, unknown>;
+  try {
+    augmented = decodeCanvasPayloadRecord(payload);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`invalid payload: ${message}`);
+  }
   const clone = JSON.parse(JSON.stringify(template)) as CanvasSpec;
 
   const walk = (node: unknown): unknown => {
@@ -237,16 +264,22 @@ export function pruneEmptyAlerts(spec: CanvasSpec): CanvasSpec {
   return { root: spec.root, elements };
 }
 
-export async function jsonRender(
-  sessionDir: string,
+export const jsonRenderEffect = (
+  session: Session,
   sessionId: string,
   publicOrigin: string,
   payload: Record<string, unknown>,
-): Promise<CanvasSpec> {
-  const raw = await readFile(path.join(sessionDir, "canvas.json"), "utf-8");
-  const template = JSON.parse(raw) as CanvasSpec;
-  const fullPayload = await buildAugmentedPayload(sessionDir, sessionId, publicOrigin, payload);
-  let spec = mergePayloadIntoSpec(template, fullPayload);
-  spec = pruneEmptyAlerts(spec);
-  return spec;
-}
+) =>
+  Effect.gen(function* () {
+    const store = yield* SessionStore;
+    const templateRaw = yield* store.readCanvasTemplate(session);
+    const template = JSON.parse(templateRaw) as CanvasSpec;
+    const fullPayload = yield* buildAugmentedPayloadEffect(
+      session.dir,
+      sessionId,
+      publicOrigin,
+      payload,
+    );
+    const spec = mergePayloadIntoSpec(template, fullPayload);
+    return pruneEmptyAlerts(spec);
+  });

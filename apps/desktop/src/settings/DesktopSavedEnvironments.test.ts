@@ -22,12 +22,6 @@ const savedRegistryRecord: PersistedSavedEnvironmentRecord = {
   wsBaseUrl: "wss://remote.example.com/",
   createdAt: "2026-04-09T00:00:00.000Z",
   lastConnectedAt: "2026-04-09T01:00:00.000Z",
-  desktopSsh: {
-    alias: "devbox",
-    hostname: "devbox.example.com",
-    username: "julius",
-    port: 22,
-  },
 };
 
 const SavedEnvironmentRegistryDocumentProbe = Schema.Struct({
@@ -154,6 +148,9 @@ describe("DesktopSavedEnvironments", () => {
         );
         assert.equal(persisted.version, 1);
         assert.lengthOf(persisted.records, 1);
+        const firstRecord = persisted.records[0];
+        assert.ok(firstRecord && typeof firstRecord === "object");
+        assert.equal("desktopSsh" in firstRecord, false);
       }),
     ),
   );
@@ -190,6 +187,13 @@ describe("DesktopSavedEnvironments", () => {
         );
 
         assert.deepEqual(yield* savedEnvironments.getRegistry, [savedRegistryRecord]);
+        yield* savedEnvironments.setRegistry([savedRegistryRecord]);
+        const reloaded = yield* decodeSavedEnvironmentRegistryDocumentProbe(
+          yield* fileSystem.readFileString(environment.savedEnvironmentRegistryPath),
+        );
+        const firstRecord = reloaded.records[0];
+        assert.ok(firstRecord && typeof firstRecord === "object");
+        assert.equal("desktopSsh" in firstRecord, false);
       }),
     ),
   );

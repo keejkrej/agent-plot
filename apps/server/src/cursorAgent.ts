@@ -1,7 +1,7 @@
 import { Agent, CursorAgentError, type SDKAgent } from "@cursor/sdk";
 import path from "node:path";
 import { describeVisibility, type CanvasVisibility } from "./canvasIntent.ts";
-import { PY_ANALYSIS_ROOT, REPO_ROOT } from "./pythonRun.ts";
+import { PY_ANALYSIS_ROOT, REPO_ROOT } from "./python/paths.ts";
 import type { Session } from "./session/Services/SessionStore.ts";
 
 export type SessionAgentPersistence = {

@@ -10,6 +10,8 @@ import {
   layer as ServerEnvironmentLayer,
 } from "./environment/ServerEnvironment.ts";
 import { browserApiCorsLayer, makeHttpRoutesLayer } from "./http.ts";
+import { layer as AgentRunnerLayer } from "./agent/Layers/AgentRunner.ts";
+import { layer as PythonRunnerLayer } from "./python/Layers/PythonRunner.ts";
 import { layer as SessionChatLayer } from "./session/Layers/SessionChat.ts";
 import {
   layer as SessionStoreLayer,
@@ -38,8 +40,10 @@ const PlatformServicesLive = Layer.unwrap(
   ),
 );
 
-const SessionServicesLive = SessionChatLayer.pipe(
+const SessionServicesLive = AgentRunnerLayer.pipe(
+  Layer.provideMerge(SessionChatLayer),
   Layer.provideMerge(SessionStoreLayer),
+  Layer.provideMerge(PythonRunnerLayer),
   Layer.provideMerge(WsHubLayer),
 );
 

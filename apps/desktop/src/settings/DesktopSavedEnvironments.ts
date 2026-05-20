@@ -16,16 +16,10 @@ import * as Ref from "effect/Ref";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 
-type PersistedSavedEnvironmentDesktopSsh = NonNullable<
-  PersistedSavedEnvironmentRecord["desktopSsh"]
->;
-
-interface PersistedSavedEnvironmentStorageRecord extends Omit<
-  PersistedSavedEnvironmentRecord,
-  "desktopSsh"
-> {
-  readonly desktopSsh?: PersistedSavedEnvironmentDesktopSsh;
+interface PersistedSavedEnvironmentStorageRecord extends PersistedSavedEnvironmentRecord {
   readonly encryptedBearerToken?: string;
+  /** Legacy SSH IPC field; accepted on disk only and stripped on read/write. */
+  readonly desktopSsh?: unknown;
 }
 
 interface SavedEnvironmentRegistryDocument {
@@ -38,13 +32,6 @@ interface SavedEnvironmentRegistryStorageDocument {
   readonly records?: readonly PersistedSavedEnvironmentStorageRecord[];
 }
 
-const DesktopSshTargetSchema = Schema.Struct({
-  alias: Schema.String,
-  hostname: Schema.String,
-  username: Schema.NullOr(Schema.String),
-  port: Schema.NullOr(Schema.Number),
-});
-
 const PersistedSavedEnvironmentStorageRecordSchema = Schema.Struct({
   environmentId: EnvironmentId,
   label: Schema.String,
@@ -52,8 +39,8 @@ const PersistedSavedEnvironmentStorageRecordSchema = Schema.Struct({
   wsBaseUrl: Schema.String,
   createdAt: Schema.String,
   lastConnectedAt: Schema.NullOr(Schema.String),
-  desktopSsh: Schema.optionalKey(DesktopSshTargetSchema),
   encryptedBearerToken: Schema.optionalKey(Schema.String),
+  desktopSsh: Schema.optionalKey(Schema.Unknown),
 });
 
 const SavedEnvironmentRegistryDocumentSchema = Schema.Struct({
@@ -126,7 +113,7 @@ export class DesktopSavedEnvironments extends Context.Service<
 function toPersistedSavedEnvironmentRecord(
   record: PersistedSavedEnvironmentStorageRecord,
 ): PersistedSavedEnvironmentRecord {
-  const nextRecord = {
+  return {
     environmentId: record.environmentId,
     label: record.label,
     httpBaseUrl: record.httpBaseUrl,
@@ -134,7 +121,6 @@ function toPersistedSavedEnvironmentRecord(
     createdAt: record.createdAt,
     lastConnectedAt: record.lastConnectedAt,
   };
-  return record.desktopSsh ? { ...nextRecord, desktopSsh: record.desktopSsh } : nextRecord;
 }
 
 function toSavedEnvironmentStorageRecord(
@@ -149,17 +135,6 @@ function toSavedEnvironmentStorageRecord(
     createdAt: record.createdAt,
     lastConnectedAt: record.lastConnectedAt,
   };
-  const desktopSsh = record.desktopSsh;
-  if (desktopSsh) {
-    return Option.match(encryptedBearerToken, {
-      onNone: () => ({ ...nextRecord, desktopSsh }),
-      onSome: (value) => ({
-        ...nextRecord,
-        desktopSsh,
-        encryptedBearerToken: value,
-      }),
-    });
-  }
   return Option.match(encryptedBearerToken, {
     onNone: () => nextRecord,
     onSome: (value) => ({ ...nextRecord, encryptedBearerToken: value }),
@@ -171,7 +146,12 @@ function normalizeSavedEnvironmentRegistryDocument(
 ): SavedEnvironmentRegistryDocument {
   return {
     version: document.version ?? 1,
-    records: document.records ?? [],
+    records: (document.records ?? []).map((record) =>
+      toSavedEnvironmentStorageRecord(
+        toPersistedSavedEnvironmentRecord(record),
+        Option.fromNullishOr(record.encryptedBearerToken),
+      ),
+    ),
   };
 }
 
@@ -341,7 +321,10 @@ export const layer = Layer.effect(
             if (record.environmentId !== environmentId) {
               return record;
             }
-            return toPersistedSavedEnvironmentRecord(record);
+            return toSavedEnvironmentStorageRecord(
+              toPersistedSavedEnvironmentRecord(record),
+              Option.none(),
+            );
           }),
         });
       }),

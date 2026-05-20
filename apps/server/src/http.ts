@@ -12,7 +12,7 @@ import type * as Multipart from "effect/unstable/http/Multipart";
 
 import { handleUserMessage } from "./chatHandlers.ts";
 import { refreshSessionCanvas } from "./canvasRefresh.ts";
-import { describeTiff } from "./pythonRun.ts";
+import { PythonRunner } from "./python/Services/PythonRunner.ts";
 import { browserApiCorsHeaders } from "./httpCors.ts";
 import { ServerEnvironment } from "./environment/ServerEnvironment.ts";
 import { SessionChat } from "./session/Services/SessionChat.ts";
@@ -177,7 +177,8 @@ export const sessionsRoutesLayer = Layer.mergeAll(
       if (Option.isNone(session)) {
         return jsonError("not found", 404);
       }
-      const result = yield* Effect.promise(() => describeTiff(session.value.dir));
+      const pythonRunner = yield* PythonRunner;
+      const result = yield* pythonRunner.describeTiff(session.value.dir);
       if (!result.ok) {
         return jsonError(result.stderr, 500);
       }
