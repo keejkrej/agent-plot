@@ -1,9 +1,9 @@
-import { access } from "node:fs/promises";
-import path from "node:path";
-import { applyCanvasVisibility } from "./canvasIntent.js";
-import { jsonRender, type CanvasSpec } from "./mergeCanvas.js";
-import { buildArtifacts } from "./pythonRun.js";
-import { readCanvasVisibility, type Session } from "./session.js";
+import * as Effect from "effect/Effect";
+
+import { applyCanvasVisibility } from "./canvasIntent.ts";
+import { jsonRender, type CanvasSpec } from "./mergeCanvas.ts";
+import { buildArtifacts } from "./pythonRun.ts";
+import { SessionStore, type Session } from "./session/Services/SessionStore.ts";
 
 const ARTIFACT_PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "";
 
@@ -19,48 +19,46 @@ export type CanvasRefreshResult =
   | { ok: true; spec: CanvasSpec; artifactNote: string }
   | { ok: false; artifactNote: string; error?: string };
 
-async function sessionArtifactsReady(sessionDir: string): Promise<boolean> {
-  try {
-    await access(path.join(sessionDir, "artifacts", "stats.csv"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export type RefreshSessionCanvasOptions = {
   /** When true, run build_artifacts if stats.csv is missing (upload shortcut only). */
-  buildIfMissing?: boolean;
+  readonly buildIfMissing?: boolean;
 };
 
 /** Merge canvas when session artifacts exist (written by the agent, or via optional upload shortcut). */
-export async function refreshSessionCanvas(
+export const refreshSessionCanvas = Effect.fn("canvasRefresh.refreshSessionCanvas")(function* (
   session: Session,
   sessionId: string,
   options?: RefreshSessionCanvasOptions,
-): Promise<CanvasRefreshResult> {
-  const visibility = await readCanvasVisibility(session);
+) {
+  const store = yield* SessionStore;
+  const visibility = yield* store.readCanvasVisibility(session);
 
-  if (!(await sessionArtifactsReady(session.dir))) {
+  if (!(yield* store.sessionArtifactsReady(session))) {
     if (options?.buildIfMissing) {
-      const built = await buildArtifacts(session.dir);
+      const built = yield* Effect.promise(() => buildArtifacts(session.dir));
       if (!built.ok) {
         return {
-          ok: false,
+          ok: false as const,
           artifactNote: `Artifact build failed: ${built.stderr}\n`,
         };
       }
     } else {
-      return { ok: false, artifactNote: "" };
+      return { ok: false as const, artifactNote: "" };
     }
   }
 
-  try {
-    let spec = await jsonRender(session.dir, sessionId, ARTIFACT_PUBLIC_ORIGIN, defaultPayload);
-    spec = applyCanvasVisibility(spec, visibility);
-    return { ok: true, spec, artifactNote: "Canvas updated from session artifacts.\n" };
-  } catch (e) {
-    const m = e instanceof Error ? e.message : String(e);
-    return { ok: false, artifactNote: "Artifacts present but canvas merge failed.\n", error: m };
-  }
-}
+  return yield* Effect.promise(async () => {
+    try {
+      let spec = await jsonRender(session.dir, sessionId, ARTIFACT_PUBLIC_ORIGIN, defaultPayload);
+      spec = applyCanvasVisibility(spec, visibility);
+      return { ok: true as const, spec, artifactNote: "Canvas updated from session artifacts.\n" };
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      return {
+        ok: false as const,
+        artifactNote: "Artifacts present but canvas merge failed.\n",
+        error: m,
+      };
+    }
+  });
+});

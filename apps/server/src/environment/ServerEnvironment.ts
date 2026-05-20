@@ -1,7 +1,7 @@
 import {
   EnvironmentId,
   type ExecutionEnvironmentDescriptor,
-} from "@agent-plot/contracts/desktop";
+} from "@agent-plot/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

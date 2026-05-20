@@ -4,16 +4,19 @@ import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/unstable/http";
 
 import * as NetService from "@agent-plot/shared/Net";
-import { setChatBroadcastSender } from "./chatBroadcast.ts";
 import { ServerConfig } from "./config.ts";
 import {
   ServerEnvironment,
   layer as ServerEnvironmentLayer,
 } from "./environment/ServerEnvironment.ts";
 import { browserApiCorsLayer, makeHttpRoutesLayer } from "./http.ts";
-import { sessionsRoot } from "./session.ts";
+import { layer as SessionChatLayer } from "./session/Layers/SessionChat.ts";
+import {
+  layer as SessionStoreLayer,
+  SESSIONS_ROOT_PATH,
+} from "./session/Layers/SessionStore.ts";
 import { websocketRouteLayer } from "./ws.ts";
-import { WsHub, layer as WsHubLayer } from "./wsHub.ts";
+import { layer as WsHubLayer } from "./wsHub.ts";
 
 const HttpServerLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -35,38 +38,32 @@ const PlatformServicesLive = Layer.unwrap(
   ),
 );
 
-const wireChatBroadcastLayer = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const wsHub = yield* WsHub;
-    setChatBroadcastSender((sessionId, msg) => {
-      Effect.runSync(wsHub.broadcast(sessionId, msg));
-    });
-  }),
+const SessionServicesLive = SessionChatLayer.pipe(
+  Layer.provideMerge(SessionStoreLayer),
+  Layer.provideMerge(WsHubLayer),
 );
 
 const makeRoutesLayer = Layer.mergeAll(makeHttpRoutesLayer, websocketRouteLayer).pipe(
   Layer.provide(browserApiCorsLayer),
+  Layer.provideMerge(SessionServicesLive),
 );
 
-const makeServerLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* ServerConfig;
-    yield* Effect.sync(() => {
-      console.log(`Sessions directory: ${sessionsRoot()}`);
-    });
-
-    return Layer.mergeAll(
-      HttpRouter.serve(makeRoutesLayer),
-      wireChatBroadcastLayer,
-    ).pipe(
-      Layer.provideMerge(WsHubLayer),
-      Layer.provideMerge(ServerEnvironmentLayer),
-      Layer.provideMerge(HttpServerLive),
-      Layer.provideMerge(NodeHttpClient.layerUndici),
-      Layer.provideMerge(NetService.layer),
-      Layer.provideMerge(PlatformServicesLive),
-    );
+const StartupLogLive = Layer.effectDiscard(
+  Effect.sync(() => {
+    console.log(`Sessions directory: ${SESSIONS_ROOT_PATH}`);
   }),
+);
+
+export const makeServerLayer = Layer.mergeAll(
+  HttpRouter.serve(makeRoutesLayer),
+  StartupLogLive,
+).pipe(
+  Layer.provideMerge(SessionServicesLive),
+  Layer.provideMerge(ServerEnvironmentLayer),
+  Layer.provideMerge(HttpServerLive),
+  Layer.provideMerge(NodeHttpClient.layerUndici),
+  Layer.provideMerge(NetService.layer),
+  Layer.provideMerge(PlatformServicesLive),
 );
 
 export const runServer = Layer.launch(makeServerLayer);

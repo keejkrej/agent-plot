@@ -1,24 +1,13 @@
 import type { PathAttachment } from "@agent-plot/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { assistantReply } from "./assistant.ts";
-import {
-  broadcastActivityEnd,
-  broadcastActivityStart,
-  broadcastAssistantDelta,
-  broadcastAssistantEnd,
-  broadcastAssistantStart,
-  broadcastChatUser,
-  broadcastSystemNote,
-} from "./chatBroadcast.ts";
 import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.ts";
 import { refreshSessionCanvas } from "./canvasRefresh.ts";
 import { buildAgentMessageText } from "./pathAttachments.ts";
-import {
-  getSession,
-  readCanvasVisibility,
-  writeCanvasVisibility,
-} from "./session.ts";
+import { SessionChat } from "./session/Services/SessionChat.ts";
+import { SessionStore } from "./session/Services/SessionStore.ts";
 import { WsHub } from "./wsHub.ts";
 
 export const handleUserMessage = Effect.fn("chatHandlers.handleUserMessage")(function* (
@@ -27,100 +16,119 @@ export const handleUserMessage = Effect.fn("chatHandlers.handleUserMessage")(fun
   pathAttachments?: PathAttachment[],
 ) {
   const wsHub = yield* WsHub;
-  const session = yield* Effect.promise(() => getSession(sessionId));
-  if (!session) {
+  const sessionStore = yield* SessionStore;
+  const sessionChat = yield* SessionChat;
+
+  const session = yield* sessionStore.getSession(sessionId);
+  if (Option.isNone(session)) {
     yield* wsHub.broadcast(sessionId, { type: "error", message: "unknown session" });
     return;
   }
 
   const agentText = buildAgentMessageText(text, pathAttachments);
   const visibility = mergeCanvasVisibility(
-    yield* Effect.promise(() => readCanvasVisibility(session)),
+    yield* sessionStore.readCanvasVisibility(session.value),
     parseCanvasIntentDelta(`${text}\n${agentText}`),
   );
-  yield* Effect.promise(() => writeCanvasVisibility(session, visibility));
+  yield* sessionStore.writeCanvasVisibility(session.value, visibility);
 
-  let { history } = yield* Effect.promise(() => broadcastChatUser(session, text, pathAttachments));
+  let { history } = yield* sessionChat.broadcastUser(session.value, text, pathAttachments);
 
-  const { activityId: analyzeId, history: afterAnalyzeStart } = yield* Effect.promise(() =>
-    broadcastActivityStart(session, history, "Analyzing data"),
+  const { activityId: analyzeId, history: afterAnalyzeStart } = yield* sessionChat.broadcastActivityStart(
+    session.value,
+    history,
+    "Analyzing data",
   );
   history = afterAnalyzeStart;
 
-  const { assistantId, history: afterAssistantStart } = yield* Effect.promise(() =>
-    broadcastAssistantStart(session, history),
+  const { assistantId, history: afterAssistantStart } = yield* sessionChat.broadcastAssistantStart(
+    session.value,
+    history,
   );
   history = afterAssistantStart;
 
+  const agentPersistence = {
+    readAgentId: (s: typeof session.value) =>
+      Effect.runPromise(
+        sessionStore.readSessionAgentId(s).pipe(Effect.map(Option.getOrNull)),
+      ).then((id) => id ?? undefined),
+    writeAgentId: (s: typeof session.value, agentId: string) =>
+      Effect.runPromise(sessionStore.writeSessionAgentId(s, agentId)),
+  };
+
   let streamed = false;
   yield* Effect.promise(() =>
-    assistantReply(session, session.dir, agentText, visibility, {
+    assistantReply(session.value, session.value.dir, agentText, visibility, {
       onDelta: async (chunk) => {
         streamed = true;
-        history = await broadcastAssistantDelta(session, history, assistantId, chunk);
+        history = await Effect.runPromise(
+          sessionChat.broadcastAssistantDelta(session.value, history, assistantId, chunk),
+        );
       },
+      agentPersistence,
     }),
   );
 
   if (!streamed) {
-    history = yield* Effect.promise(() =>
-      broadcastAssistantDelta(session, history, assistantId, "(no response)"),
+    history = yield* sessionChat.broadcastAssistantDelta(
+      session.value,
+      history,
+      assistantId,
+      "(no response)",
     );
   }
 
-  history = yield* Effect.promise(() => broadcastAssistantEnd(session, history, assistantId));
-  history = yield* Effect.promise(() =>
-    broadcastActivityEnd(session, history, analyzeId, { status: "done" }),
-  );
+  history = yield* sessionChat.broadcastAssistantEnd(session.value, history, assistantId);
+  history = yield* sessionChat.broadcastActivityEnd(session.value, history, analyzeId, {
+    status: "done",
+  });
 
-  const { activityId: canvasId, history: afterCanvasStart } = yield* Effect.promise(() =>
-    broadcastActivityStart(session, history, "Refreshing canvas"),
+  const { activityId: canvasId, history: afterCanvasStart } = yield* sessionChat.broadcastActivityStart(
+    session.value,
+    history,
+    "Refreshing canvas",
   );
   history = afterCanvasStart;
 
-  const refreshed = yield* Effect.promise(() => refreshSessionCanvas(session, sessionId));
+  const refreshed = yield* refreshSessionCanvas(session.value, sessionId);
   if (refreshed.artifactNote) {
-    history = yield* Effect.promise(() =>
-      broadcastSystemNote(session, history, refreshed.artifactNote!.trim()),
+    history = yield* sessionChat.broadcastSystemNote(
+      session.value,
+      history,
+      refreshed.artifactNote.trim(),
     );
   }
   if (refreshed.ok) {
     yield* wsHub.broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
-    history = yield* Effect.promise(() =>
-      broadcastActivityEnd(session, history, canvasId, {
-        detail: "Canvas updated",
-        status: "done",
-      }),
-    );
+    history = yield* sessionChat.broadcastActivityEnd(session.value, history, canvasId, {
+      detail: "Canvas updated",
+      status: "done",
+    });
     yield* wsHub.broadcast(sessionId, { type: "tool.end", name: "json_render" });
-  } else if (refreshed.error) {
+  } else if (!refreshed.ok && "error" in refreshed && refreshed.error) {
     yield* wsHub.broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
-    history = yield* Effect.promise(() =>
-      broadcastActivityEnd(session, history, canvasId, {
-        ...(refreshed.error ? { detail: refreshed.error } : {}),
-        status: "error",
-      }),
-    );
-    history = yield* Effect.promise(() =>
-      broadcastSystemNote(session, history, `Error: ${refreshed.error}`),
+    history = yield* sessionChat.broadcastActivityEnd(session.value, history, canvasId, {
+      ...(refreshed.error ? { detail: refreshed.error } : {}),
+      status: "error",
+    });
+    history = yield* sessionChat.broadcastSystemNote(
+      session.value,
+      history,
+      `Error: ${refreshed.error}`,
     );
   } else if (Object.keys(parseCanvasIntentDelta(text)).length > 0) {
-    history = yield* Effect.promise(() =>
-      broadcastActivityEnd(session, history, canvasId, {
-        detail: "Preferences saved",
-        status: "done",
-      }),
-    );
-    history = yield* Effect.promise(() =>
-      broadcastSystemNote(
-        session,
-        history,
-        "Canvas preferences saved. Point the agent at your data path and ask it to build previews when you want the canvas filled in.",
-      ),
+    history = yield* sessionChat.broadcastActivityEnd(session.value, history, canvasId, {
+      detail: "Preferences saved",
+      status: "done",
+    });
+    history = yield* sessionChat.broadcastSystemNote(
+      session.value,
+      history,
+      "Canvas preferences saved. Point the agent at your data path and ask it to build previews when you want the canvas filled in.",
     );
   } else {
-    history = yield* Effect.promise(() =>
-      broadcastActivityEnd(session, history, canvasId, { status: "done" }),
-    );
+    history = yield* sessionChat.broadcastActivityEnd(session.value, history, canvasId, {
+      status: "done",
+    });
   }
 });

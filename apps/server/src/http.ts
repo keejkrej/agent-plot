@@ -11,25 +11,12 @@ import {
 import type * as Multipart from "effect/unstable/http/Multipart";
 
 import { handleUserMessage } from "./chatHandlers.ts";
-import {
-  broadcastActivityEnd,
-  broadcastActivityStart,
-  broadcastChatUser,
-  broadcastSystemNote,
-} from "./chatBroadcast.ts";
-import { readChatHistory } from "./chatHistory.ts";
 import { refreshSessionCanvas } from "./canvasRefresh.ts";
 import { describeTiff } from "./pythonRun.ts";
 import { browserApiCorsHeaders } from "./httpCors.ts";
 import { ServerEnvironment } from "./environment/ServerEnvironment.ts";
-import {
-  archiveSession,
-  createSession,
-  getSession,
-  listSessions,
-  saveUpload,
-  unarchiveSession,
-} from "./session.ts";
+import { SessionChat } from "./session/Services/SessionChat.ts";
+import { SessionStore } from "./session/Services/SessionStore.ts";
 import { requirePathParam, respondMissingRouteParam } from "./routeParams.ts";
 import { WsHub } from "./wsHub.ts";
 
@@ -56,21 +43,24 @@ export const sessionsRoutesLayer = Layer.mergeAll(
       const url = HttpServerRequest.toURL(request);
       const archived =
         Option.isSome(url) && url.value.searchParams.get("archived") === "true";
-      const sessions = yield* Effect.promise(() => listSessions({ archived }));
+      const sessionStore = yield* SessionStore;
+      const sessions = yield* sessionStore.listSessions({ archived });
       return json({ sessions });
     }),
   ),
   HttpRouter.add("POST", "/api/sessions", () =>
     Effect.gen(function* () {
-      const session = yield* Effect.promise(() => createSession());
+      const sessionStore = yield* SessionStore;
+      const session = yield* sessionStore.createSession;
       return json({ id: session.id });
     }),
   ),
   HttpRouter.add("POST", "/api/sessions/:id/archive", () =>
     Effect.gen(function* () {
       const id = yield* requirePathParam("id");
-      const session = yield* Effect.promise(() => archiveSession(id));
-      if (!session) {
+      const sessionStore = yield* SessionStore;
+      const session = yield* sessionStore.archiveSession(id);
+      if (Option.isNone(session)) {
         return jsonError("session not found", 404);
       }
       return json({ ok: true });
@@ -79,8 +69,9 @@ export const sessionsRoutesLayer = Layer.mergeAll(
   HttpRouter.add("POST", "/api/sessions/:id/unarchive", () =>
     Effect.gen(function* () {
       const id = yield* requirePathParam("id");
-      const session = yield* Effect.promise(() => unarchiveSession(id));
-      if (!session) {
+      const sessionStore = yield* SessionStore;
+      const session = yield* sessionStore.unarchiveSession(id);
+      if (Option.isNone(session)) {
         return jsonError("session not found", 404);
       }
       return json({ ok: true });
@@ -89,11 +80,12 @@ export const sessionsRoutesLayer = Layer.mergeAll(
   HttpRouter.add("GET", "/api/sessions/:id/chat", () =>
     Effect.gen(function* () {
       const id = yield* requirePathParam("id");
-      const session = yield* Effect.promise(() => getSession(id));
-      if (!session) {
+      const sessionStore = yield* SessionStore;
+      const session = yield* sessionStore.getSession(id);
+      if (Option.isNone(session)) {
         return jsonError("session not found", 404);
       }
-      const history = yield* Effect.promise(() => readChatHistory(session));
+      const history = yield* sessionStore.readChatHistory(session.value);
       return json(history);
     }),
   ),
@@ -101,10 +93,12 @@ export const sessionsRoutesLayer = Layer.mergeAll(
     Effect.gen(function* () {
       const id = yield* requirePathParam("id");
       const wsHub = yield* WsHub;
+      const sessionStore = yield* SessionStore;
+      const sessionChat = yield* SessionChat;
       const fileSystem = yield* FileSystem.FileSystem;
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const session = yield* Effect.promise(() => getSession(id));
-      if (!session) {
+      const session = yield* sessionStore.getSession(id);
+      if (Option.isNone(session)) {
         return jsonError("session not found", 404);
       }
 
@@ -120,55 +114,56 @@ export const sessionsRoutesLayer = Layer.mergeAll(
         return jsonError("expected file field (binary)", 400);
       }
 
-      const buf = Buffer.from(yield* fileSystem.readFile(filePart.path));
+      const buf = yield* fileSystem.readFile(filePart.path);
       const fileName = filePart.name || "input.tif";
-      yield* Effect.promise(() => saveUpload(session, buf, fileName));
+      yield* sessionStore.saveUpload(session.value, buf, fileName);
 
-      let history = yield* Effect.promise(() => readChatHistory(session));
-      const { history: afterUser } = yield* Effect.promise(() =>
-        broadcastChatUser(session, `[upload] ${fileName}`),
+      let history = yield* sessionStore.readChatHistory(session.value);
+      const { history: afterUser } = yield* sessionChat.broadcastUser(
+        session.value,
+        `[upload] ${fileName}`,
       );
       history = afterUser;
 
-      const { activityId, history: afterActStart } = yield* Effect.promise(() =>
-        broadcastActivityStart(session, history, "Building artifacts"),
+      const { activityId, history: afterActStart } = yield* sessionChat.broadcastActivityStart(
+        session.value,
+        history,
+        "Building artifacts",
       );
       history = afterActStart;
 
-      const refreshed = yield* Effect.promise(() =>
-        refreshSessionCanvas(session, id, { buildIfMissing: true }),
-      );
+      const refreshed = yield* refreshSessionCanvas(session.value, id, { buildIfMissing: true });
 
       if (refreshed.artifactNote) {
-        history = yield* Effect.promise(() =>
-          broadcastSystemNote(session, history, refreshed.artifactNote!.trim()),
+        history = yield* sessionChat.broadcastSystemNote(
+          session.value,
+          history,
+          refreshed.artifactNote.trim(),
         );
       }
 
       if (refreshed.ok) {
         yield* wsHub.broadcast(id, { type: "canvas.tree", spec: refreshed.spec });
-        history = yield* Effect.promise(() =>
-          broadcastActivityEnd(session, history, activityId, {
-            detail: "Canvas updated",
-            status: "done",
-          }),
-        );
+        history = yield* sessionChat.broadcastActivityEnd(session.value, history, activityId, {
+          detail: "Canvas updated",
+          status: "done",
+        });
         yield* wsHub.broadcast(id, { type: "tool.end", name: "json_render" });
-      } else if (refreshed.error) {
+      } else if (!refreshed.ok && "error" in refreshed && refreshed.error) {
         yield* wsHub.broadcast(id, { type: "canvas.error", message: refreshed.error });
-        history = yield* Effect.promise(() =>
-          broadcastActivityEnd(session, history, activityId, {
-            ...(refreshed.error ? { detail: refreshed.error } : {}),
-            status: "error",
-          }),
-        );
-        history = yield* Effect.promise(() =>
-          broadcastSystemNote(session, history, `Error: ${refreshed.error}`),
+        history = yield* sessionChat.broadcastActivityEnd(session.value, history, activityId, {
+          detail: refreshed.error,
+          status: "error",
+        });
+        history = yield* sessionChat.broadcastSystemNote(
+          session.value,
+          history,
+          `Error: ${refreshed.error}`,
         );
       } else {
-        history = yield* Effect.promise(() =>
-          broadcastActivityEnd(session, history, activityId, { status: "done" }),
-        );
+        history = yield* sessionChat.broadcastActivityEnd(session.value, history, activityId, {
+          status: "done",
+        });
       }
 
       return json({ ok: true, name: fileName });
@@ -177,11 +172,12 @@ export const sessionsRoutesLayer = Layer.mergeAll(
   HttpRouter.add("GET", "/api/sessions/:id/describe", () =>
     Effect.gen(function* () {
       const id = yield* requirePathParam("id");
-      const session = yield* Effect.promise(() => getSession(id));
-      if (!session) {
+      const sessionStore = yield* SessionStore;
+      const session = yield* sessionStore.getSession(id);
+      if (Option.isNone(session)) {
         return jsonError("not found", 404);
       }
-      const result = yield* Effect.promise(() => describeTiff(session.dir));
+      const result = yield* Effect.promise(() => describeTiff(session.value.dir));
       if (!result.ok) {
         return jsonError(result.stderr, 500);
       }
@@ -197,8 +193,9 @@ export const artifactsRouteLayer = HttpRouter.add(
     const id = yield* requirePathParam("id");
     const request = yield* HttpServerRequest.HttpServerRequest;
     const fileSystem = yield* FileSystem.FileSystem;
-    const session = yield* Effect.promise(() => getSession(id));
-    if (!session) {
+    const sessionStore = yield* SessionStore;
+    const session = yield* sessionStore.getSession(id);
+    if (Option.isNone(session)) {
       return jsonError("not found", 404);
     }
 
@@ -214,7 +211,7 @@ export const artifactsRouteLayer = HttpRouter.add(
     }
 
     const path = yield* Path.Path;
-    const artifactsRoot = path.join(session.dir, "artifacts");
+    const artifactsRoot = path.join(session.value.dir, "artifacts");
     const abs = path.join(artifactsRoot, rel);
     if (!abs.startsWith(artifactsRoot)) {
       return jsonError("bad path", 400);
@@ -245,7 +242,11 @@ export const artifactsRouteLayer = HttpRouter.add(
   }).pipe(Effect.catchTag("MissingRouteParamError", respondMissingRouteParam)) as Effect.Effect<
     HttpServerResponse.HttpServerResponse,
     never,
-    FileSystem.FileSystem | Path.Path | HttpServerRequest.HttpServerRequest | HttpRouter.RouteContext
+    | FileSystem.FileSystem
+    | Path.Path
+    | HttpServerRequest.HttpServerRequest
+    | HttpRouter.RouteContext
+    | SessionStore
   >,
 );
 

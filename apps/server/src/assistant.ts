@@ -1,6 +1,11 @@
-import { describeVisibility, type CanvasVisibility } from "./canvasIntent.js";
-import { cursorAssistantReply, formatCursorAgentError, isCursorAgentConfigured } from "./cursorAgent.js";
-import type { Session } from "./session.js";
+import { describeVisibility, type CanvasVisibility } from "./canvasIntent.ts";
+import {
+  cursorAssistantReply,
+  formatCursorAgentError,
+  isCursorAgentConfigured,
+  type SessionAgentPersistence,
+} from "./cursorAgent.ts";
+import type { Session } from "./session/Services/SessionStore.ts";
 
 async function remoteAgent(url: string, sessionId: string, userText: string): Promise<string> {
   const res = await fetch(url, {
@@ -39,6 +44,7 @@ function stubAssistantReply(userText: string, visibility: CanvasVisibility): str
 
 export type AssistantSink = {
   onDelta?: (text: string) => void;
+  agentPersistence?: SessionAgentPersistence;
 };
 
 /**
@@ -55,8 +61,20 @@ export async function assistantReply(
   sink?: AssistantSink,
 ): Promise<string> {
   if (isCursorAgentConfigured()) {
+    if (!sink?.agentPersistence) {
+      const msg = "[cursor agent] internal error: missing session persistence";
+      sink?.onDelta?.(msg);
+      return msg;
+    }
     try {
-      return await cursorAssistantReply(session, sessionDir, userText, visibility, sink?.onDelta);
+      return await cursorAssistantReply(
+        session,
+        sessionDir,
+        userText,
+        visibility,
+        sink.agentPersistence,
+        sink?.onDelta,
+      );
     } catch (e) {
       const msg = formatCursorAgentError(e);
       sink?.onDelta?.(msg);

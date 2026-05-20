@@ -1,3 +1,4 @@
+import type { WsInbound } from "@agent-plot/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -10,7 +11,7 @@ export interface WsConnection {
 export interface WsHubShape {
   readonly register: (sessionId: string, connection: WsConnection) => Effect.Effect<void>;
   readonly unregister: (sessionId: string, connection: WsConnection) => Effect.Effect<void>;
-  readonly broadcast: (sessionId: string, message: unknown) => Effect.Effect<void>;
+  readonly broadcast: (sessionId: string, message: WsInbound) => Effect.Effect<void>;
 }
 
 export class WsHub extends Context.Service<WsHub, WsHubShape>()("agent-plot/server/WsHub") {}
@@ -52,7 +53,7 @@ const makeWsHub = Effect.gen(function* () {
     });
   });
 
-  const broadcast = Effect.fn("wsHub.broadcast")(function* (sessionId: string, message: unknown) {
+  const broadcast = Effect.fn("wsHub.broadcast")(function* (sessionId: string, message: WsInbound) {
     const snapshot = yield* Ref.get(sockets);
     const set = snapshot.get(sessionId);
     if (!set) {

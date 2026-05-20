@@ -1,6 +1,6 @@
-import type { PathAttachment } from "@agent-plot/contracts";
+import { decodeWsClientMessage } from "@agent-plot/contracts";
+import type { WsInbound } from "@agent-plot/contracts";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import {
@@ -11,118 +11,109 @@ import {
 import type * as Socket from "effect/unstable/socket/Socket";
 
 import { handleUserMessage } from "./chatHandlers.ts";
-import {
-  broadcastActivityEnd,
-  broadcastActivityStart,
-} from "./chatBroadcast.ts";
-import { readChatHistory } from "./chatHistory.ts";
-import { browseFilesystem } from "./fsBrowse.ts";
 import { refreshSessionCanvas } from "./canvasRefresh.ts";
-import { getSession } from "./session.ts";
+import { browseFilesystem } from "./fsBrowse.ts";
+import { SessionChat } from "./session/Services/SessionChat.ts";
+import { SessionStore } from "./session/Services/SessionStore.ts";
 import { WsHub } from "./wsHub.ts";
-
-function parsePathAttachments(raw: unknown): PathAttachment[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined;
-  const out: PathAttachment[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const record = item as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    const path = typeof record.path === "string" ? record.path.trim() : "";
-    const kind = record.kind === "file" || record.kind === "folder" ? record.kind : null;
-    if (!id || !path || !kind) continue;
-    out.push({ id, path, kind });
-  }
-  return out.length > 0 ? out : undefined;
-}
 
 const handleSocketMessage = Effect.fn("ws.handleSocketMessage")(function* (
   sessionId: string,
   raw: string,
-  send: (message: unknown) => Effect.Effect<void>,
+  send: (message: WsInbound) => Effect.Effect<void>,
 ) {
-  let msg: {
-    type?: string;
-    text?: string;
-    requestId?: string;
-    partialPath?: string;
-    pathAttachments?: unknown;
-  };
+  let parsed: unknown;
   try {
-    msg = JSON.parse(raw) as typeof msg;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     yield* send({ type: "error", message: "invalid json" });
     return;
   }
 
-  if (msg.type === "fs.browse") {
-    const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
-    const partialPath = typeof msg.partialPath === "string" ? msg.partialPath : "~";
+  const decodedOpt = yield* decodeWsClientMessage(parsed).pipe(Effect.option);
+  if (Option.isNone(decodedOpt)) {
+    yield* send({ type: "error", message: "invalid message" });
+    return;
+  }
+  const decoded = decodedOpt.value;
+
+  if (decoded.type === "fs.browse") {
+    const requestId = decoded.requestId.trim();
+    const partialPath = decoded.partialPath.trim() || "~";
     if (!requestId) {
       yield* send({ type: "error", message: "missing requestId" });
       return;
     }
-    try {
-      const result = yield* Effect.promise(() => browseFilesystem(partialPath));
-      yield* send({
-        type: "fs.browse.ok",
-        requestId,
-        parentPath: result.parentPath,
-        entries: result.entries,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      yield* send({ type: "fs.browse.error", requestId, message });
-    }
-    return;
+    const result = yield* Effect.tryPromise({
+      try: () => browseFilesystem(partialPath),
+      catch: (error) => (error instanceof Error ? error.message : String(error)),
+    }).pipe(
+      Effect.match({
+        onFailure: (message) =>
+          Effect.gen(function* () {
+            yield* send({ type: "fs.browse.error", requestId, message });
+          }),
+        onSuccess: (browse) =>
+          Effect.gen(function* () {
+            yield* send({
+              type: "fs.browse.ok",
+              requestId,
+              parentPath: browse.parentPath,
+              entries: browse.entries,
+            });
+          }),
+      }),
+    );
+    return result;
   }
 
-  if (msg.type === "user.message") {
-    const session = yield* Effect.promise(() => getSession(sessionId));
-    if (!session) {
-      yield* send({ type: "error", message: "unknown session" });
-      return;
-    }
-    const text = typeof msg.text === "string" ? msg.text : "";
-    const pathAttachments = parsePathAttachments(msg.pathAttachments);
-    if (!text.trim() && !pathAttachments?.length) {
+  if (decoded.type === "user.message") {
+    const text = decoded.text;
+    const pathAttachments = decoded.pathAttachments;
+    if (!text.trim() && !(pathAttachments && pathAttachments.length > 0)) {
       yield* send({ type: "error", message: "empty message" });
       return;
     }
-    yield* handleUserMessage(sessionId, text, pathAttachments);
+    yield* handleUserMessage(
+      sessionId,
+      text,
+      pathAttachments ? [...pathAttachments] : undefined,
+    );
     return;
   }
 
-  if (msg.type === "json_render") {
+  if (decoded.type === "json_render") {
     const wsHub = yield* WsHub;
-    const session = yield* Effect.promise(() => getSession(sessionId));
-    if (!session) {
+    const sessionStore = yield* SessionStore;
+    const sessionChat = yield* SessionChat;
+    const session = yield* sessionStore.getSession(sessionId);
+    if (Option.isNone(session)) {
       yield* send({ type: "error", message: "unknown session" });
       return;
     }
-    let history = yield* Effect.promise(() => readChatHistory(session));
-    const { activityId, history: afterStart } = yield* Effect.promise(() =>
-      broadcastActivityStart(session, history, "Rendering canvas"),
+
+    let history = yield* sessionStore.readChatHistory(session.value);
+    const { activityId, history: afterStart } = yield* sessionChat.broadcastActivityStart(
+      session.value,
+      history,
+      "Rendering canvas",
     );
     history = afterStart;
-    const refreshed = yield* Effect.promise(() => refreshSessionCanvas(session, sessionId));
+
+    const refreshed = yield* refreshSessionCanvas(session.value, sessionId);
     if (refreshed.ok) {
       yield* wsHub.broadcast(sessionId, { type: "canvas.tree", spec: refreshed.spec });
-      yield* Effect.promise(() =>
-        broadcastActivityEnd(session, history, activityId, {
-          detail: "Canvas updated",
-          status: "done",
-        }),
-      );
+      yield* sessionChat.broadcastActivityEnd(session.value, history, activityId, {
+        detail: "Canvas updated",
+        status: "done",
+      });
       yield* wsHub.broadcast(sessionId, { type: "tool.end", name: "json_render" });
-    } else if (refreshed.error) {
+    } else if ("error" in refreshed && refreshed.error) {
       yield* wsHub.broadcast(sessionId, { type: "canvas.error", message: refreshed.error });
-      yield* Effect.promise(() =>
-        broadcastActivityEnd(session, history, activityId, {
-          ...(refreshed.error ? { detail: refreshed.error } : {}),
-          status: "error",
-        }),
-      );
+      yield* sessionChat.broadcastActivityEnd(session.value, history, activityId, {
+        detail: refreshed.error,
+        status: "error",
+      });
     }
   }
 });
@@ -142,13 +133,22 @@ const runSocket = Effect.fn("ws.runSocket")(function* (
   yield* wsHub.register(sessionId, connection);
   yield* Effect.addFinalizer(() => wsHub.unregister(sessionId, connection));
 
-  const send = (message: unknown) =>
+  const send = (message: WsInbound) =>
     Effect.sync(() => {
       connection.send(JSON.stringify(message));
     });
 
   yield* socket.runString((message) =>
-    handleSocketMessage(sessionId, message, send).pipe(Effect.orDie),
+    handleSocketMessage(sessionId, message, send).pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          const messageText =
+            error instanceof Error ? error.message : "internal server error";
+          yield* Effect.logError("ws.handleSocketMessage failed", error);
+          yield* send({ type: "error", message: messageText });
+        }),
+      ),
+    ),
   );
 });
 

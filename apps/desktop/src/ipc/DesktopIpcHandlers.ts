@@ -16,16 +16,6 @@ import {
   setTailscaleServeEnabled,
 } from "./methods/serverExposure.ts";
 import {
-  bootstrapSshBearerSession,
-  disconnectSshEnvironment,
-  discoverSshHosts,
-  ensureSshEnvironment,
-  fetchSshEnvironmentDescriptor,
-  fetchSshSessionState,
-  issueSshWebSocketToken,
-  resolveSshPasswordPrompt,
-} from "./methods/sshEnvironment.ts";
-import {
   checkForUpdate,
   downloadUpdate,
   getUpdateState,
@@ -55,15 +45,6 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(getSavedEnvironmentSecret);
   yield* ipc.handle(setSavedEnvironmentSecret);
   yield* ipc.handle(removeSavedEnvironmentSecret);
-
-  yield* ipc.handle(discoverSshHosts);
-  yield* ipc.handle(ensureSshEnvironment);
-  yield* ipc.handle(disconnectSshEnvironment);
-  yield* ipc.handle(fetchSshEnvironmentDescriptor);
-  yield* ipc.handle(bootstrapSshBearerSession);
-  yield* ipc.handle(fetchSshSessionState);
-  yield* ipc.handle(issueSshWebSocketToken);
-  yield* ipc.handle(resolveSshPasswordPrompt);
 
   yield* ipc.handle(getServerExposureState);
   yield* ipc.handle(setServerExposureMode);

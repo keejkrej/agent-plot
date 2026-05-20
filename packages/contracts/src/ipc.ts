@@ -381,24 +381,6 @@ export interface DesktopBridge {
   getSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<string | null>;
   setSavedEnvironmentSecret: (environmentId: EnvironmentId, secret: string) => Promise<boolean>;
   removeSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<void>;
-  discoverSshHosts: () => Promise<readonly DesktopDiscoveredSshHost[]>;
-  ensureSshEnvironment: (
-    target: DesktopSshEnvironmentTarget,
-    options?: { issuePairingToken?: boolean },
-  ) => Promise<DesktopSshEnvironmentBootstrap>;
-  disconnectSshEnvironment: (target: DesktopSshEnvironmentTarget) => Promise<void>;
-  fetchSshEnvironmentDescriptor: (httpBaseUrl: string) => Promise<ExecutionEnvironmentDescriptor>;
-  bootstrapSshBearerSession: (
-    httpBaseUrl: string,
-    credential: string,
-  ) => Promise<AuthBearerBootstrapResult>;
-  fetchSshSessionState: (httpBaseUrl: string, bearerToken: string) => Promise<AuthSessionState>;
-  issueSshWebSocketToken: (
-    httpBaseUrl: string,
-    bearerToken: string,
-  ) => Promise<AuthWebSocketTokenResult>;
-  onSshPasswordPrompt: (listener: (request: DesktopSshPasswordPromptRequest) => void) => () => void;
-  resolveSshPasswordPrompt: (requestId: string, password: string | null) => Promise<void>;
   getServerExposureState: () => Promise<DesktopServerExposureState>;
   setServerExposureMode: (mode: DesktopServerExposureMode) => Promise<DesktopServerExposureState>;
   setTailscaleServeEnabled: (input: {

@@ -1,8 +1,13 @@
 import { Agent, CursorAgentError, type SDKAgent } from "@cursor/sdk";
 import path from "node:path";
-import { describeVisibility, type CanvasVisibility } from "./canvasIntent.js";
-import { PY_ANALYSIS_ROOT, REPO_ROOT } from "./pythonRun.js";
-import { readSessionAgentId, type Session, writeSessionAgentId } from "./session.js";
+import { describeVisibility, type CanvasVisibility } from "./canvasIntent.ts";
+import { PY_ANALYSIS_ROOT, REPO_ROOT } from "./pythonRun.ts";
+import type { Session } from "./session/Services/SessionStore.ts";
+
+export type SessionAgentPersistence = {
+  readAgentId: (session: Session) => Promise<string | undefined>;
+  writeAgentId: (session: Session, agentId: string) => Promise<void>;
+};
 
 const liveAgents = new Map<string, SDKAgent>();
 
@@ -91,9 +96,12 @@ function buildPrompt(sessionDir: string, userText: string, visibility: CanvasVis
   ].join("\n");
 }
 
-async function createOrResumeAgent(session: Session): Promise<SDKAgent> {
+async function createOrResumeAgent(
+  session: Session,
+  persistence: SessionAgentPersistence,
+): Promise<SDKAgent> {
   const opts = agentOptions(session);
-  const savedId = await readSessionAgentId(session);
+  const savedId = await persistence.readAgentId(session);
   if (savedId) {
     try {
       return await Agent.resume(savedId, opts);
@@ -102,14 +110,17 @@ async function createOrResumeAgent(session: Session): Promise<SDKAgent> {
     }
   }
   const agent = await Agent.create(opts);
-  await writeSessionAgentId(session, agent.agentId);
+  await persistence.writeAgentId(session, agent.agentId);
   return agent;
 }
 
-async function getSessionAgent(session: Session): Promise<SDKAgent> {
+async function getSessionAgent(
+  session: Session,
+  persistence: SessionAgentPersistence,
+): Promise<SDKAgent> {
   const cached = liveAgents.get(session.id);
   if (cached) return cached;
-  const agent = await createOrResumeAgent(session);
+  const agent = await createOrResumeAgent(session, persistence);
   liveAgents.set(session.id, agent);
   return agent;
 }
@@ -152,9 +163,10 @@ export async function cursorAssistantReply(
   sessionDir: string,
   userText: string,
   visibility: CanvasVisibility,
+  persistence: SessionAgentPersistence,
   onDelta?: (text: string) => void,
 ): Promise<string> {
-  const agent = await getSessionAgent(session);
+  const agent = await getSessionAgent(session, persistence);
   const prompt = buildPrompt(sessionDir, userText, visibility);
   const run = await agent.send(prompt);
   return streamRun(run, onDelta);
