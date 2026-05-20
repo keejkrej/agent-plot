@@ -11,6 +11,8 @@ const defaultPayload = {
   raw: "./artifacts/raw_preview.png",
   fft: "./artifacts/fft_mag.png",
   stats: "./artifacts/stats.csv",
+  meta: "./artifacts/meta.json",
+  summary: "./artifacts/summary.json",
 };
 
 export type CanvasRefreshResult =

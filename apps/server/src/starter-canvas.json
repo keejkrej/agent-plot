@@ -4,11 +4,79 @@
     "main": {
       "type": "Stack",
       "props": { "direction": "column", "gap": 20 },
-      "children": ["title", "images", "charts"]
+      "children": ["title", "alerts", "metaSection", "images", "charts", "chartsRowMean"]
     },
     "title": {
       "type": "Caption",
-      "props": { "text": "TIFF overview (raw · FFT · stats)" },
+      "props": { "text": "TIFF overview (raw · FFT · meta · stats)" },
+      "children": []
+    },
+    "alerts": {
+      "type": "Alert",
+      "props": {
+        "title": "QC notes",
+        "message": { "$payload": "summaryAlertMessage" },
+        "variant": "warning"
+      },
+      "children": []
+    },
+    "metaSection": {
+      "type": "Stack",
+      "props": { "direction": "column", "gap": 12 },
+      "children": ["metaDivider", "metaMetrics", "metaKv", "summaryTable"]
+    },
+    "metaDivider": {
+      "type": "Divider",
+      "props": { "label": "Metadata" },
+      "children": []
+    },
+    "metaMetrics": {
+      "type": "MetricGrid",
+      "props": { "columns": 3, "gap": 8 },
+      "children": ["mShape", "mDtype", "mMin", "mMax", "mP1", "mP99"]
+    },
+    "mShape": {
+      "type": "Metric",
+      "props": { "label": "Shape", "value": { "$payload": "metaShape" } },
+      "children": []
+    },
+    "mDtype": {
+      "type": "Metric",
+      "props": { "label": "Dtype", "value": { "$payload": "metaDtype" } },
+      "children": []
+    },
+    "mMin": {
+      "type": "Metric",
+      "props": { "label": "Min", "value": { "$payload": "metaMin" } },
+      "children": []
+    },
+    "mMax": {
+      "type": "Metric",
+      "props": { "label": "Max", "value": { "$payload": "metaMax" } },
+      "children": []
+    },
+    "mP1": {
+      "type": "Metric",
+      "props": { "label": "p1", "value": { "$payload": "metaP1" } },
+      "children": []
+    },
+    "mP99": {
+      "type": "Metric",
+      "props": { "label": "p99", "value": { "$payload": "metaP99" } },
+      "children": []
+    },
+    "metaKv": {
+      "type": "KeyValueList",
+      "props": { "items": { "$payload": "metaItems" } },
+      "children": []
+    },
+    "summaryTable": {
+      "type": "Table",
+      "props": {
+        "caption": "Summary",
+        "columns": { "$payload": "summaryTableColumns" },
+        "rows": { "$payload": "summaryTableRows" }
+      },
       "children": []
     },
     "images": {
@@ -46,6 +114,20 @@
         "title": "Intensity histogram (sampled)",
         "x": { "$payload": "histX" },
         "y": { "$payload": "histY" }
+      },
+      "children": []
+    },
+    "chartsRowMean": {
+      "type": "Stack",
+      "props": { "direction": "row", "gap": 16 },
+      "children": ["rowMean"]
+    },
+    "rowMean": {
+      "type": "LinePlot",
+      "props": {
+        "title": "Row mean intensity",
+        "x": { "$payload": "rowMeanX" },
+        "y": { "$payload": "rowMeanY" }
       },
       "children": []
     }

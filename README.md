@@ -50,7 +50,7 @@ Runs **API** (`@agent-plot/server`, default port **8787**) and **web** (`@agent-
 - `POST /api/sessions/:id/upload` — multipart field `file` (TIFF)  
 - `GET /ws?sessionId=…` — WebSocket (`user.message` runs the assistant; server emits structured `chat.*`, `activity.*`, `canvas.tree`)
 
-The **web** client renders `canvas.tree` with [`@json-render/react`](https://json-render.dev) and a small in-repo catalog (`Stack`, `Caption`, `PreviewImage`, `LinePlot`, `Histogram`) matching `apps/server/src/starter-canvas.json`.
+The **web** client renders `canvas.tree` with [`@json-render/react`](https://json-render.dev) and an in-repo catalog in `apps/web/src/canvas/catalog.ts` (layout: `Stack`, `Grid`, `Divider`, `Caption`; data: `Metric`, `MetricGrid`, `KeyValueList`, `Table`, `Text`, `Alert`; media/plots: `PreviewImage`, `LinePlot`, `Histogram`, `ScatterPlot`, `BarChart`), matching `apps/server/src/starter-canvas.json`. `build_artifacts.py` writes `meta.json`, `summary.json`, and extended `stats.csv` for the server merge layer.
 
 ### Chat agent backend
 
