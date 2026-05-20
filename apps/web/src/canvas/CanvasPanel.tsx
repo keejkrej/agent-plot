@@ -42,8 +42,8 @@ export function CanvasPanel({ spec }: { spec: Spec | null }) {
           </EmptyMedia>
           <EmptyTitle>Canvas</EmptyTitle>
           <EmptyDescription>
-            Start a session and chat with the assistant; the canvas updates when artifacts are
-            available for the session.
+            Start a session and tell the assistant where your data is on disk. The canvas updates
+            after it writes artifacts under the session (e.g. from build_artifacts on a TIFF path).
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

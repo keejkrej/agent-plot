@@ -29,7 +29,7 @@ function stubAssistantReply(userText: string, visibility: CanvasVisibility): str
   const visNote = describeVisibility(visibility);
   return [
     "Assistant (stub): set CURSOR_API_KEY to run the Cursor agent.",
-    "The agent reads your message and chooses which Python analysis script to run (describe metadata vs build canvas artifacts).",
+    "Tell the agent where your data lives (paths to .tif, .h5, .csv, .npy, etc.); it inspects contents and runs analysis scripts when appropriate.",
     "",
     visNote,
     "",

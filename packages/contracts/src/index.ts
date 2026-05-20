@@ -2,10 +2,20 @@
 
 export type ChatMessageRole = "user" | "assistant" | "system";
 
+export type PathAttachmentKind = "file" | "folder";
+
+/** User-attached filesystem path (not uploaded bytes). */
+export type PathAttachment = {
+  id: string;
+  path: string;
+  kind: PathAttachmentKind;
+};
+
 export type ChatMessageSnapshot = {
   id: string;
   role: ChatMessageRole;
   text: string;
+  pathAttachments?: PathAttachment[];
   createdAt: string;
   streaming?: boolean;
   completedAt?: string;
@@ -19,7 +29,13 @@ export type ActivitySnapshot = {
   createdAt: string;
 };
 
-export type WsChatUser = { type: "chat.user"; id: string; text: string; createdAt: string };
+export type WsChatUser = {
+  type: "chat.user";
+  id: string;
+  text: string;
+  pathAttachments?: PathAttachment[];
+  createdAt: string;
+};
 export type WsChatAssistantStart = {
   type: "chat.assistant.start";
   id: string;
@@ -47,6 +63,39 @@ export type WsChatDelta = { type: "chat.delta"; text: string };
 export type WsError = { type: "error"; message: string };
 export type WsToolEnd = { type: "tool.end"; name: string };
 
+export type FilesystemBrowseEntryKind = "file" | "directory";
+
+export type FilesystemBrowseEntry = {
+  name: string;
+  fullPath: string;
+  kind: FilesystemBrowseEntryKind;
+};
+
+export type FilesystemBrowseResult = {
+  parentPath: string;
+  entries: FilesystemBrowseEntry[];
+};
+
+/** Client → server (session WebSocket). */
+export type WsFsBrowse = {
+  type: "fs.browse";
+  requestId: string;
+  partialPath: string;
+};
+
+export type WsFsBrowseOk = {
+  type: "fs.browse.ok";
+  requestId: string;
+  parentPath: string;
+  entries: FilesystemBrowseEntry[];
+};
+
+export type WsFsBrowseError = {
+  type: "fs.browse.error";
+  requestId: string;
+  message: string;
+};
+
 export type WsInbound =
   | WsChatUser
   | WsChatAssistantStart
@@ -59,7 +108,9 @@ export type WsInbound =
   | WsCanvasError
   | WsChatDelta
   | WsError
-  | WsToolEnd;
+  | WsToolEnd
+  | WsFsBrowseOk
+  | WsFsBrowseError;
 
 export type SessionChatHistory = {
   messages: ChatMessageSnapshot[];

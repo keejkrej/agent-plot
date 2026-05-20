@@ -1,6 +1,6 @@
 # agent-plot
 
-Scientific **TIFF → artifacts → json-render canvas** MVP. Repo layout follows the **kickstart** monorepo convention.
+Scientific **data paths → agent inspection → artifacts → json-render canvas** MVP. The primary workflow is chat: you tell the agent where your data lives (`.tif`, `.h5`, `.csv`, `.npy`, etc.); it inspects the files and writes session artifacts for the canvas. HTTP upload is an optional shortcut for TIFF only.
 
 ## Layout
 
@@ -47,8 +47,33 @@ Runs **API** (`@agent-plot/server`, default port **8787**) and **web** (`@agent-
 - `GET /api/sessions` — list sessions on disk  
 - `POST /api/sessions` — create session  
 - `GET /api/sessions/:id/chat` — persisted chat history (`messages`, `activities`)  
-- `POST /api/sessions/:id/upload` — multipart field `file` (TIFF)  
+- `POST /api/sessions/:id/upload` — optional multipart `file` (TIFF shortcut; triggers `build_artifacts`)  
 - `GET /ws?sessionId=…` — WebSocket (`user.message` runs the assistant; server emits structured `chat.*`, `activity.*`, `canvas.tree`)
+- **Path attachments** — composer file/folder buttons open a server-backed explorer; selected paths are sent as `pathAttachments` on `user.message` and expanded into a `Data paths attached…` block for the agent (see `apps/server/src/pathAttachments.ts`).
+- **`fs.browse`** (same WebSocket) — client sends `{ type: "fs.browse", requestId, partialPath }`; server replies `fs.browse.ok` with `{ parentPath, entries: [{ name, fullPath, kind }] }` or `fs.browse.error`. Lists the host filesystem the API process can read (`~` expansion, absolute paths). Local-only trust model.
+
+### Typical workflow
+
+1. `pnpm dev` → create a session in the web UI.
+2. Attach data paths with the **file** or **folder** buttons (path explorer), or type paths in chat. Use **Enter path manually** if the explorer is unavailable.
+3. Send a message (text optional when paths are attached). The agent receives full paths in the prompt block.
+4. Alternatively, point the agent at data in prose, e.g. `The volume is at /data/experiment/stack.h5`.
+5. The agent inspects format and contents (shell, Python, or the bundled `describe_tiff` / `build_artifacts` scripts when appropriate), writes under `<session>/artifacts/`, then the server refreshes the canvas on each message.
+6. Use natural language to hide/show panels (`hide histogram`, `show only meta`).
+
+`build_artifacts.py` currently produces the default canvas bundle from **2D TIFF-like** slices (PNG previews, `stats.csv`, `meta.json`, `summary.json`). For other formats the agent should summarize in chat and extend artifacts or scripts as needed.
+
+### Verification (manual)
+
+1. `pnpm dev` with `CURSOR_API_KEY` set → new session.
+2. **File** button → path explorer at `~` → navigate → **Attach** a `.tif` / `.h5` path → chip shows basename, tooltip full path.
+3. **Folder** button → attach a directory path (Attach uses the current listing).
+4. Send with chips only → agent prompt includes attached paths.
+5. Chat: reference an on-disk TIFF path in text, e.g. `Build canvas previews from /path/to/sample.tif`.
+6. After the agent runs `build_artifacts`, confirm the canvas shows metadata metrics, key-value list, raw/FFT images, profile + histogram + row-mean plot.
+7. Chat: `hide histogram` / `show only meta` — visibility toggles apply.
+8. Invalid browse path or permission error → explorer shows `fs.browse.error` message.
+9. Rename or remove `artifacts/meta.json` in the session dir, send another message → `canvas.error` should surface via WebSocket.
 
 The **web** client renders `canvas.tree` with [`@json-render/react`](https://json-render.dev) and an in-repo catalog in `apps/web/src/canvas/catalog.ts` (layout: `Stack`, `Grid`, `Divider`, `Caption`; data: `Metric`, `MetricGrid`, `KeyValueList`, `Table`, `Text`, `Alert`; media/plots: `PreviewImage`, `LinePlot`, `Histogram`, `ScatterPlot`, `BarChart`), matching `apps/server/src/starter-canvas.json`. `build_artifacts.py` writes `meta.json`, `summary.json`, and extended `stats.csv` for the server merge layer.
 
@@ -67,7 +92,7 @@ Optional:
 - `AGENT_PLOT_CURSOR_MODEL` — model id (default `composer-2`)
 - `PUBLIC_ORIGIN` — prefix for artifact URLs when not using same-origin `/api/...`
 
-Canvas panel hide/show (raw, FFT, charts) is still applied server-side from your message wording; the SDK agent handles analysis chat.
+Canvas panel hide/show (raw, FFT, metadata, charts, row mean) is applied server-side from your message wording; the SDK agent handles inspection and artifact generation.
 
 ## Scripts
 

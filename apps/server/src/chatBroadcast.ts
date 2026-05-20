@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   ActivitySnapshot,
   ChatMessageSnapshot,
+  PathAttachment,
   SessionChatHistory,
   WsInbound,
 } from "@agent-plot/contracts";
@@ -28,13 +29,31 @@ async function emit(session: Session, msg: WsInbound, history?: SessionChatHisto
 export async function broadcastChatUser(
   session: Session,
   text: string,
+  pathAttachments?: PathAttachment[],
 ): Promise<{ userId: string; history: SessionChatHistory }> {
   const history = await readChatHistory(session);
   const id = randomUUID();
   const createdAt = new Date().toISOString();
-  const msg: ChatMessageSnapshot = { id, role: "user", text, createdAt };
+  const paths = pathAttachments?.length ? pathAttachments : undefined;
+  const msg: ChatMessageSnapshot = {
+    id,
+    role: "user",
+    text,
+    ...(paths ? { pathAttachments: paths } : {}),
+    createdAt,
+  };
   const next = upsertMessage(history, msg);
-  await emit(session, { type: "chat.user", id, text, createdAt }, next);
+  await emit(
+    session,
+    {
+      type: "chat.user",
+      id,
+      text,
+      ...(paths ? { pathAttachments: paths } : {}),
+      createdAt,
+    },
+    next,
+  );
   return { userId: id, history: next };
 }
 

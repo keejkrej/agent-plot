@@ -17,7 +17,10 @@ import {
   setChatBroadcastSender,
 } from "./chatBroadcast.js";
 import { readChatHistory } from "./chatHistory.js";
+import type { PathAttachment } from "@agent-plot/contracts";
 import { mergeCanvasVisibility, parseCanvasIntentDelta } from "./canvasIntent.js";
+import { browseFilesystem } from "./fsBrowse.js";
+import { buildAgentMessageText } from "./pathAttachments.js";
 import { refreshSessionCanvas } from "./canvasRefresh.js";
 import { describeTiff } from "./pythonRun.js";
 import {
@@ -189,20 +192,41 @@ setChatBroadcastSender(broadcast);
 
 const sockets = new Map<string, Set<{ send: (data: string) => void }>>();
 
-async function handleUserMessage(sessionId: string, text: string): Promise<void> {
+function parsePathAttachments(raw: unknown): PathAttachment[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: PathAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const path = typeof o.path === "string" ? o.path.trim() : "";
+    const kind = o.kind === "file" || o.kind === "folder" ? o.kind : null;
+    if (!id || !path || !kind) continue;
+    out.push({ id, path, kind });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+async function handleUserMessage(
+  sessionId: string,
+  text: string,
+  pathAttachments?: PathAttachment[],
+): Promise<void> {
   const session = await getSession(sessionId);
   if (!session) {
     broadcast(sessionId, { type: "error", message: "unknown session" });
     return;
   }
 
+  const agentText = buildAgentMessageText(text, pathAttachments);
+
   const visibility = mergeCanvasVisibility(
     await readCanvasVisibility(session),
-    parseCanvasIntentDelta(text),
+    parseCanvasIntentDelta(`${text}\n${agentText}`),
   );
   await writeCanvasVisibility(session, visibility);
 
-  let { history } = await broadcastChatUser(session, text);
+  let { history } = await broadcastChatUser(session, text, pathAttachments);
 
   const { activityId: analyzeId, history: afterAnalyzeStart } = await broadcastActivityStart(
     session,
@@ -218,7 +242,7 @@ async function handleUserMessage(sessionId: string, text: string): Promise<void>
   history = afterAssistantStart;
 
   let streamed = false;
-  await assistantReply(session, session.dir, text, visibility, {
+  await assistantReply(session, session.dir, agentText, visibility, {
     onDelta: async (chunk) => {
       streamed = true;
       history = await broadcastAssistantDelta(session, history, assistantId, chunk);
@@ -270,7 +294,7 @@ async function handleUserMessage(sessionId: string, text: string): Promise<void>
     history = await broadcastSystemNote(
       session,
       history,
-      "Canvas preferences saved. Ask the agent to run build_artifacts when you want previews.",
+      "Canvas preferences saved. Point the agent at your data path and ask it to build previews when you want the canvas filled in.",
     );
   } else {
     history = await broadcastActivityEnd(session, history, canvasId, { status: "done" });
@@ -303,11 +327,43 @@ app.get(
       },
       async onMessage(event, ws) {
         const raw = typeof event.data === "string" ? event.data : String(event.data);
-        let msg: { type?: string; text?: string; templatePath?: string; payload?: Record<string, unknown> };
+        let msg: {
+          type?: string;
+          text?: string;
+          requestId?: string;
+          partialPath?: string;
+          pathAttachments?: unknown;
+          templatePath?: string;
+          payload?: Record<string, unknown>;
+        };
         try {
           msg = JSON.parse(raw) as typeof msg;
         } catch {
           ws.send(JSON.stringify({ type: "error", message: "invalid json" }));
+          return;
+        }
+        if (msg.type === "fs.browse") {
+          const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
+          const partialPath =
+            typeof msg.partialPath === "string" ? msg.partialPath : "~";
+          if (!requestId) {
+            ws.send(JSON.stringify({ type: "error", message: "missing requestId" }));
+            return;
+          }
+          try {
+            const result = await browseFilesystem(partialPath);
+            ws.send(
+              JSON.stringify({
+                type: "fs.browse.ok",
+                requestId,
+                parentPath: result.parentPath,
+                entries: result.entries,
+              }),
+            );
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            ws.send(JSON.stringify({ type: "fs.browse.error", requestId, message }));
+          }
           return;
         }
         if (msg.type === "user.message") {
@@ -316,8 +372,13 @@ app.get(
             ws.send(JSON.stringify({ type: "error", message: "unknown session" }));
             return;
           }
-          const text = msg.text ?? "";
-          await handleUserMessage(sessionId, text);
+          const text = typeof msg.text === "string" ? msg.text : "";
+          const pathAttachments = parsePathAttachments(msg.pathAttachments);
+          if (!text.trim() && !pathAttachments?.length) {
+            ws.send(JSON.stringify({ type: "error", message: "empty message" }));
+            return;
+          }
+          await handleUserMessage(sessionId, text, pathAttachments);
           return;
         }
         if (msg.type === "json_render") {

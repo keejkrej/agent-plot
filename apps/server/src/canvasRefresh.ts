@@ -29,11 +29,11 @@ async function sessionArtifactsReady(sessionDir: string): Promise<boolean> {
 }
 
 export type RefreshSessionCanvasOptions = {
-  /** When true, run build_artifacts if stats.csv is missing (e.g. after HTTP upload). */
+  /** When true, run build_artifacts if stats.csv is missing (upload shortcut only). */
   buildIfMissing?: boolean;
 };
 
-/** Merge canvas when session artifacts exist (written by the agent or upload + build). */
+/** Merge canvas when session artifacts exist (written by the agent, or via optional upload shortcut). */
 export async function refreshSessionCanvas(
   session: Session,
   sessionId: string,

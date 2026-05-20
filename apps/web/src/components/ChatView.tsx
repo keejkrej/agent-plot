@@ -7,6 +7,8 @@ import { MessagesTimeline } from "@/components/chat/MessagesTimeline.js";
 import { ThreadErrorBanner } from "@/components/chat/ThreadErrorBanner.js";
 import { panelHeaderClassName } from "@/components/panelHeader.js";
 import { cn } from "@/lib/utils";
+import type { PathAttachment } from "@agent-plot/contracts";
+import type { BrowseFilesystemFn } from "@/hooks/useFilesystemBrowse.js";
 import type { ActivityEntry, ChatMessage } from "@/types.js";
 
 export type ChatViewProps = {
@@ -18,9 +20,13 @@ export type ChatViewProps = {
   connection: "connected" | "connecting" | "disconnected";
   error: string | null;
   draft: string;
+  pathAttachments: PathAttachment[];
   onDraftChange: (value: string) => void;
+  onAddPathAttachment: (attachment: PathAttachment) => void;
+  onRemovePathAttachment: (id: string) => void;
   onSend: () => void;
   onUpload?: (file: File) => void;
+  browseFilesystem?: BrowseFilesystemFn | null;
   canvasOpen: boolean;
   onToggleCanvas: () => void;
   onOpenCanvas: () => void;
@@ -35,9 +41,13 @@ export function ChatView({
   connection,
   error,
   draft,
+  pathAttachments,
   onDraftChange,
+  onAddPathAttachment,
+  onRemovePathAttachment,
   onSend,
   onUpload,
+  browseFilesystem,
   canvasOpen,
   onToggleCanvas,
   onOpenCanvas,
@@ -113,13 +123,17 @@ export function ChatView({
         )}
       >
         <ChatComposer
+          browseFilesystem={browseFilesystem}
           connection={connection}
           draft={draft}
           isConnecting={isConnecting}
           isRunning={isRunning}
+          onAddPathAttachment={onAddPathAttachment}
+          onRemovePathAttachment={onRemovePathAttachment}
           onDraftChange={onDraftChange}
           onSend={onSend}
           onUpload={onUpload}
+          pathAttachments={pathAttachments}
           sessionId={sessionId}
         />
       </div>

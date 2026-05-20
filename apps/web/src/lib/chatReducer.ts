@@ -11,7 +11,13 @@ export function applyWsMessage(state: ChatState, msg: WsInbound): ChatState {
         ...state,
         messages: [
           ...state.messages,
-          { id: msg.id, role: "user", text: msg.text, createdAt: msg.createdAt },
+          {
+            id: msg.id,
+            role: "user",
+            text: msg.text,
+            ...(msg.pathAttachments?.length ? { pathAttachments: msg.pathAttachments } : {}),
+            createdAt: msg.createdAt,
+          },
         ],
         phase: state.phase === "idle" ? "running" : state.phase,
       };

@@ -6,6 +6,7 @@ import { ChatView } from "@/components/ChatView.js";
 import { NoActiveSessionState } from "@/components/NoActiveSessionState.js";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useComposerDraft } from "@/composerDraftStore.js";
+import { useComposerPathAttachments } from "@/composerPathAttachmentsStore.js";
 import { useSessionChat } from "@/hooks/useSessionChat.js";
 import { usePanelWidth } from "@/hooks/usePanelWidth.js";
 
@@ -30,6 +31,12 @@ export function App() {
   );
 
   const { prompt: draft, setPrompt: setDraft, clearPrompt: clearDraft } = useComposerDraft(sessionId);
+  const {
+    attachments: pathAttachments,
+    addAttachment: addPathAttachment,
+    removeAttachment: removePathAttachment,
+    clearAttachments: clearPathAttachments,
+  } = useComposerPathAttachments(sessionId);
 
   const onCanvasTree = useCallback((tree: unknown) => {
     setCanvasError(null);
@@ -47,6 +54,7 @@ export function App() {
     error: chatError,
     connection,
     sendMessage,
+    browseFilesystem,
     reloadHistory,
   } = useSessionChat({
     sessionId,
@@ -149,10 +157,12 @@ export function App() {
 
   const handleSend = useCallback(() => {
     const text = draft.trim();
-    if (!text || !sessionId) return;
-    sendMessage(text);
+    const paths = pathAttachments;
+    if ((!text && paths.length === 0) || !sessionId) return;
+    sendMessage(text, paths.length > 0 ? paths : undefined);
     clearDraft();
-  }, [draft, sessionId, sendMessage, clearDraft]);
+    clearPathAttachments();
+  }, [draft, pathAttachments, sessionId, sendMessage, clearDraft, clearPathAttachments]);
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -211,6 +221,7 @@ export function App() {
             >
               <ChatView
                 activities={activities}
+                browseFilesystem={browseFilesystem}
                 canvasOpen={canvasOpen}
                 connection={connection}
                 draft={draft}
@@ -218,10 +229,13 @@ export function App() {
                 isRunning={isRunning}
                 messages={messages}
                 onDraftChange={setDraft}
+                onAddPathAttachment={addPathAttachment}
+                onRemovePathAttachment={removePathAttachment}
                 onSend={handleSend}
                 onOpenCanvas={openCanvas}
                 onToggleCanvas={toggleCanvas}
                 onUpload={handleUpload}
+                pathAttachments={pathAttachments}
                 sessionId={sessionId}
                 sessionTitle={activeSession?.title ?? null}
               />

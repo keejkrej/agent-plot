@@ -8,7 +8,7 @@
     },
     "title": {
       "type": "Caption",
-      "props": { "text": "TIFF overview (raw · FFT · meta · stats)" },
+      "props": { "text": "Data overview (raw · FFT · meta · stats)" },
       "children": []
     },
     "alerts": {

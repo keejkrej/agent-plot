@@ -1,4 +1,11 @@
-import type { SessionChatHistory, WsInbound } from "@agent-plot/contracts";
+import type {
+  FilesystemBrowseResult,
+  PathAttachment,
+  SessionChatHistory,
+  WsFsBrowseError,
+  WsFsBrowseOk,
+  WsInbound,
+} from "@agent-plot/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyWsMessage, hydrateChatState, markRunningComplete } from "@/lib/chatReducer.js";
 import type { ChatState, SessionPhase } from "@/types.js";
@@ -12,6 +19,13 @@ const wsBaseUrl = () => {
 
 const RECONNECT_BASE_MS = 800;
 const RECONNECT_MAX_MS = 12_000;
+const FS_BROWSE_TIMEOUT_MS = 15_000;
+
+type FsBrowsePending = {
+  resolve: (result: FilesystemBrowseResult) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 type UseSessionChatOptions = {
   sessionId: string | null;
@@ -28,14 +42,30 @@ export function useSessionChat({
 }: UseSessionChatOptions) {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const wsRef = useRef<WebSocket | null>(null);
-  const pendingRef = useRef<string[]>([]);
+  const pendingRef = useRef<Array<{ text: string; pathAttachments?: PathAttachment[] }>>([]);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const onCanvasTreeRef = useRef(onCanvasTree);
   const onCanvasErrorRef = useRef(onCanvasError);
+  const fsBrowsePendingRef = useRef(new Map<string, FsBrowsePending>());
   onCanvasTreeRef.current = onCanvasTree;
   onCanvasErrorRef.current = onCanvasError;
+
+  const settleFsBrowse = useCallback((requestId: string, ok: WsFsBrowseOk | WsFsBrowseError) => {
+    const pending = fsBrowsePendingRef.current.get(requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    fsBrowsePendingRef.current.delete(requestId);
+    if (ok.type === "fs.browse.ok") {
+      pending.resolve({
+        parentPath: ok.parentPath,
+        entries: ok.entries,
+      });
+    } else {
+      pending.reject(new Error(ok.message));
+    }
+  }, []);
 
   const loadHistory = useCallback(
     async (id: string) => {
@@ -100,14 +130,24 @@ export function useSessionChat({
         }));
         const pending = pendingRef.current;
         pendingRef.current = [];
-        for (const text of pending) {
-          ws.send(JSON.stringify({ type: "user.message", text }));
+        for (const item of pending) {
+          ws.send(
+            JSON.stringify({
+              type: "user.message",
+              text: item.text,
+              ...(item.pathAttachments?.length ? { pathAttachments: item.pathAttachments } : {}),
+            }),
+          );
         }
       };
 
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as WsInbound;
+          if (msg.type === "fs.browse.ok" || msg.type === "fs.browse.error") {
+            settleFsBrowse(msg.requestId, msg);
+            return;
+          }
           if (msg.type === "canvas.tree") {
             onCanvasTreeRef.current?.(msg.spec);
             return;
@@ -155,7 +195,7 @@ export function useSessionChat({
         }, delay);
       };
     },
-    [dispatch, sessionId],
+    [dispatch, sessionId, settleFsBrowse],
   );
 
   useEffect(() => {
@@ -192,16 +232,42 @@ export function useSessionChat({
     };
   }, [sessionId, connect, loadHistory]);
 
-  const sendMessage = useCallback(
-    (text: string) => {
-      if (!sessionId || !text.trim()) return false;
+  const browseFilesystem = useCallback(
+    (partialPath: string): Promise<FilesystemBrowseResult> => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        pendingRef.current.push(text);
+        return Promise.reject(new Error("WebSocket not connected"));
+      }
+      const requestId = crypto.randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          fsBrowsePendingRef.current.delete(requestId);
+          reject(new Error("Browse request timed out"));
+        }, FS_BROWSE_TIMEOUT_MS);
+        fsBrowsePendingRef.current.set(requestId, { resolve, reject, timer });
+        ws.send(JSON.stringify({ type: "fs.browse", requestId, partialPath }));
+      });
+    },
+    [],
+  );
+
+  const sendMessage = useCallback(
+    (text: string, pathAttachments?: PathAttachment[]) => {
+      const trimmed = text.trim();
+      const paths = pathAttachments ?? [];
+      if (!sessionId || (trimmed.length === 0 && paths.length === 0)) return false;
+      const payload = {
+        type: "user.message" as const,
+        text: trimmed,
+        ...(paths.length > 0 ? { pathAttachments: paths } : {}),
+      };
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        pendingRef.current.push({ text: trimmed, pathAttachments: paths });
         setChat((prev) => ({ ...prev, phase: "running" }));
         return false;
       }
-      ws.send(JSON.stringify({ type: "user.message", text }));
+      ws.send(JSON.stringify(payload));
       setChat((prev) => ({ ...prev, phase: "running", error: null }));
       return true;
     },
@@ -223,6 +289,7 @@ export function useSessionChat({
     error: chat.error,
     connection: chat.connection,
     sendMessage,
+    browseFilesystem,
     reloadHistory: () => (sessionId ? loadHistory(sessionId) : Promise.resolve()),
   };
 }

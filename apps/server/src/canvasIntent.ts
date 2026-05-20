@@ -200,7 +200,7 @@ export function applyCanvasVisibility(spec: CanvasSpec, vis: CanvasVisibility): 
     if (vis.raw) parts.push("raw");
     if (vis.fft) parts.push("FFT");
     if (vis.line || vis.hist || vis.rowMean) parts.push("stats");
-    title.props.text = parts.length ? `TIFF overview (${parts.join(" · ")})` : "TIFF overview";
+    title.props.text = parts.length ? `Data overview (${parts.join(" · ")})` : "Data overview";
   }
 
   pruneEmptySection(elements, "main", "images");
