@@ -3,10 +3,10 @@
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "dev": "pnpm --filter @agent-plot/server --filter @agent-plot/web --parallel dev",
-    "dev:server": "pnpm --filter @agent-plot/server dev",
-    "dev:api": "pnpm --filter @agent-plot/server dev",
-    "dev:web": "pnpm --filter @agent-plot/web dev",
+    "dev": "AGENT_PLOT_PORT=8787 VITE_HTTP_URL=http://127.0.0.1:8787 VITE_WS_URL=ws://127.0.0.1:8787 pnpm --filter @agent-plot/server --filter @agent-plot/web --parallel dev",
+    "dev:server": "AGENT_PLOT_PORT=8787 pnpm --filter @agent-plot/server dev",
+    "dev:api": "AGENT_PLOT_PORT=8787 pnpm --filter @agent-plot/server dev",
+    "dev:web": "AGENT_PLOT_PORT=8787 VITE_HTTP_URL=http://127.0.0.1:8787 VITE_WS_URL=ws://127.0.0.1:8787 pnpm --filter @agent-plot/web dev",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "build": "pnpm run -r build",
     "typecheck": "pnpm run -r typecheck"

@@ -5,6 +5,25 @@ import path from "node:path";
 import pkg from "./package.json" with { type: "json" };
 
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
+const configuredWsUrl = process.env.VITE_WS_URL?.trim();
+const defaultBackendPort = process.env.AGENT_PLOT_PORT?.trim() || "8787";
+const loopbackHost = "127.0.0.1";
+const devWsProxyTarget = configuredWsUrl || `ws://${loopbackHost}:${defaultBackendPort}`;
+
+function resolveHttpProxyTarget(wsUrl: string): string {
+  const url = new URL(wsUrl);
+  if (url.protocol === "ws:") {
+    url.protocol = "http:";
+  } else if (url.protocol === "wss:") {
+    url.protocol = "https:";
+  }
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+const devHttpProxyTarget = resolveHttpProxyTarget(devWsProxyTarget);
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -19,8 +38,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://127.0.0.1:8787",
-      "/ws": { target: "ws://127.0.0.1:8787", ws: true },
+      "/api": {
+        target: devHttpProxyTarget,
+        changeOrigin: true,
+      },
+      "/ws": {
+        target: devWsProxyTarget,
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 });
