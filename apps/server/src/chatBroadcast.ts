@@ -125,16 +125,22 @@ export async function broadcastActivityEnd(
 ): Promise<SessionChatHistory> {
   const existing = history.activities.find((a) => a.id === activityId);
   if (!existing) return history;
+  const detail = opts?.detail ?? existing.detail;
   const activity: ActivitySnapshot = {
     ...existing,
-    detail: opts?.detail ?? existing.detail,
     status: opts?.status ?? "done",
+    ...(detail !== undefined ? { detail } : {}),
   };
   const next = upsertActivity(history, activity);
   const wsStatus = activity.status === "error" ? "error" : "done";
   await emit(
     session,
-    { type: "activity.end", id: activityId, detail: activity.detail, status: wsStatus },
+    {
+      type: "activity.end",
+      id: activityId,
+      status: wsStatus,
+      ...(detail !== undefined ? { detail } : {}),
+    },
     next,
   );
   return next;

@@ -1,15 +1,9 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "declaration": true
+    "composite": true,
+    "types": ["node"],
+    "lib": ["ESNext", "esnext.disposable"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src", "tsdown.config.ts"]
 }

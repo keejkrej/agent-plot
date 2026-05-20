@@ -1,6 +1,18 @@
 packages:
   - "apps/*"
   - "packages/*"
+
 allowBuilds:
+  electron: true
   esbuild: true
   sqlite3: true
+
+catalog:
+  "@effect/language-service": "0.84.2"
+  "@effect/platform-node": "4.0.0-beta.59"
+  "@effect/vitest": "4.0.0-beta.59"
+  "@types/node": "^24.10.13"
+  effect: "4.0.0-beta.59"
+  tsdown: "^0.20.3"
+  typescript: "^5.9.3"
+  vitest: "^4.1.7"

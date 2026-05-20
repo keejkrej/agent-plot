@@ -3,6 +3,8 @@ node_modules
 
 # Build outputs
 dist
+apps/desktop/dist-electron
+apps/desktop/.electron-runtime
 .turbo
 *.tsbuildinfo
 

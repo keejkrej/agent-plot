@@ -7,10 +7,13 @@ Scientific **data paths → agent inspection → artifacts → json-render canva
 ```text
 agent-plot/
 ├── apps/
-│   ├── server/           # Hono + WebSocket + sessions + `uv` Python bridge
-│   └── web/              # Vite + React UI (proxy to API)
+│   ├── server/           # Effect HTTP + WebSocket + sessions + `uv` Python bridge
+│   ├── web/              # Vite + React UI (proxy to API)
+│   └── desktop/          # Electron shell (mirrors t3code desktop layout)
 ├── packages/
-│   ├── contracts/        # Shared TS types (WS payloads, etc.)
+│   ├── contracts/        # Shared TS types (WS payloads, desktop IPC)
+│   ├── shared/           # Effect utilities used by desktop
+│   ├── tailscale/        # Optional LAN exposure helpers for desktop
 │   └── utils/            # Shared helpers
 ├── crates/               # Rust workspace (`empty` placeholder crate)
 ├── python/
@@ -43,6 +46,25 @@ pnpm dev
 ```
 
 Runs **API** (`@agent-plot/server`, default port **8787**) and **web** (`@agent-plot/web`, **5173**) in parallel. The web app proxies `/api` and `/ws` to the API.
+
+The server uses **Effect** (`HttpRouter` + `@effect/platform-node`) with a `bin.mjs` entry (like t3code), desktop bootstrap via `--bootstrap-fd`, and readiness at `/.well-known/agent-plot/environment`.
+
+```bash
+pnpm --filter @agent-plot/server dev      # tsx watch src/bin.ts
+pnpm --filter @agent-plot/server build    # dist/bin.mjs
+pnpm --filter @agent-plot/server start
+```
+
+### Desktop (Electron)
+
+Mirrors the [t3code](https://github.com/pingdotgg/t3code) desktop app: Effect-based main process, `tsdown` bundles, spawns the API as a child, and loads the Vite dev server in development.
+
+```bash
+export CURSOR_API_KEY="cursor_..."
+pnpm dev:desktop
+```
+
+Requires `AGENT_PLOT_PORT` (default **8787**) and `VITE_DEV_SERVER_URL` (set automatically to `http://127.0.0.1:5173`). User data lives under `~/.agent-plot/`.
 
 - `GET /api/sessions` — list sessions on disk  
 - `POST /api/sessions` — create session  
