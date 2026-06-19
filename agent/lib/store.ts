@@ -81,7 +81,7 @@ export class SessionStore {
     const dir = sessionDir(id);
     ensureSessionDir(id);
 
-    const starterCanvasPath = path.join(process.cwd(), "src", "lib", "db", "starter-canvas.json");
+    const starterCanvasPath = path.join(process.cwd(), "templates", "starter-canvas.json");
     const destCanvasPath = path.join(dir, "canvas.json");
     if (fs.existsSync(starterCanvasPath) && !fs.existsSync(destCanvasPath)) {
       fs.copyFileSync(starterCanvasPath, destCanvasPath);

@@ -39,14 +39,14 @@ function createModel() {
     const url = process.env.AGENT_PLOT_AGENT_URL?.trim();
     if (!url) throw new Error("AGENT_PLOT_AGENT_URL is not set for remote provider");
     const openai = createOpenAI({ baseURL: url, apiKey: apiKey() });
-    return openai(modelName());
+    return openai.chat(modelName());
   }
   const openai = createOpenAI({
     baseURL: baseURL(),
     apiKey: apiKey(),
     name: "ollama",
   });
-  return openai(modelName());
+  return openai.chat(modelName());
 }
 
 export function describeModel(): string {

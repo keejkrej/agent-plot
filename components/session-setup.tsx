@@ -5,6 +5,7 @@ import { Settings2Icon, SparklesIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -90,6 +91,9 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Session setup</DialogTitle>
+          <DialogDescription>
+            Set the research context and data folder for this session.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-1.5">

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/agent-lib",
+    "rootDir": "agent/lib"
+  },
+  "include": ["agent/lib/**/*.ts"],
+  "exclude": ["node_modules", ".next", ".eve", "dist"]
+}

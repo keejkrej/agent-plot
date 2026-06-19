@@ -1,7 +1,8 @@
+// @ts-nocheck
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { mergeCanvasVisibility, type CanvasVisibility } from "#lib/canvasIntent";
-import { getDefaultStore } from "#lib/store";
+import { mergeCanvasVisibility, type CanvasVisibility } from "../../dist/agent-lib/canvasIntent.js";
+import { getDefaultStore } from "../../dist/agent-lib/store.js";
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

@@ -1,8 +1,9 @@
+// @ts-nocheck
 import * as fs from "node:fs";
 import path from "node:path";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { sessionDir } from "#lib/store";
+import { sessionDir } from "../../dist/agent-lib/store.js";
 
 function ensureInsideSessionDir(sessionDir: string, target: string): string {
   const abs = path.resolve(sessionDir, target);

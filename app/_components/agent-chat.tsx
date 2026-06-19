@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
 import { AlertCircleIcon } from "lucide-react";
 import {
@@ -19,24 +18,19 @@ import { AgentMessage } from "./agent-message";
 import { CanvasPanel } from "@/components/canvas/CanvasPanel";
 import { useCanvasSpec } from "@/components/canvas/useCanvasSpec";
 import { SessionSetup } from "@/components/session-setup";
-import { ensureSession } from "@/app/_actions/session";
 
 const AGENT_NAME = "agent-plot";
 
 type AgentStatus = ReturnType<typeof useEveAgent>["status"];
 
 export function AgentChat() {
-  const [sessionId] = useState(() => crypto.randomUUID());
-  const agent = useEveAgent({
-    initialSession: { sessionId, streamIndex: 0 },
-  });
+  const agent = useEveAgent();
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const isEmpty = agent.data.messages.length === 0;
   const canvasSpec = useCanvasSpec(agent.data);
-
-  useEffect(() => {
-    ensureSession(sessionId).catch(() => undefined);
-  }, [sessionId]);
+  // Eve creates its own session id on the first turn; our session.started hook
+  // creates the matching workspace directory.
+  const eveSessionId = agent.session?.sessionId ?? "";
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text.trim();
@@ -73,7 +67,7 @@ export function AgentChat() {
           </div>
           <div className="w-full max-w-xl px-4 sm:px-6">{composer}</div>
           <div className="flex items-center gap-2">
-            <SessionSetup sessionId={sessionId} />
+            <SessionSetup sessionId={eveSessionId} />
           </div>
         </div>
       ) : (
@@ -84,7 +78,7 @@ export function AgentChat() {
                 <span className="truncate text-muted-foreground text-sm">{AGENT_NAME}</span>
                 <StatusDot status={agent.status} />
               </span>
-              <SessionSetup sessionId={sessionId} />
+              <SessionSetup sessionId={eveSessionId} />
             </header>
 
             <Conversation className="min-h-0 flex-1">

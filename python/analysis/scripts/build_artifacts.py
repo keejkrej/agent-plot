@@ -53,6 +53,8 @@ def build_spec(session_dir: str):
     session = Path(session_dir)
     artifacts = session / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
+    # session id is the directory basename
+    session_id = session.name
 
     payload = load_payload(session)
     pngs = sorted(artifacts.glob("*.png"))
@@ -105,7 +107,7 @@ def build_spec(session_dir: str):
 
     for i, png in enumerate(pngs):
         pid = f"img_{i}"
-        add(pid, {"type": "PreviewImage", "props": {"src": f"/api/artifacts/{png.name}", "caption": png.stem}})
+        add(pid, {"type": "PreviewImage", "props": {"src": f"/api/sessions/{session_id}/artifacts/{png.name}", "caption": png.stem}})
         plot_children.append(pid)
 
     if plot_children:

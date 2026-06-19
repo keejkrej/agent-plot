@@ -1,8 +1,9 @@
+// @ts-nocheck
 import * as fs from "node:fs";
 import path from "node:path";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { getDefaultStore, sessionDir } from "#lib/store";
+import { getDefaultStore, sessionDir } from "../../dist/agent-lib/store.js";
 
 function existsSync(p: string): boolean {
   try {

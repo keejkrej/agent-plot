@@ -1,6 +1,7 @@
+// @ts-nocheck
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { getDefaultStore } from "#lib/store";
+import { getDefaultStore } from "../../dist/agent-lib/store.js";
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

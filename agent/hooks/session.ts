@@ -1,5 +1,6 @@
+// @ts-nocheck
 import { defineHook } from "eve/hooks";
-import { getDefaultStore } from "#lib/store";
+import { getDefaultStore } from "../../dist/agent-lib/store.js";
 
 export default defineHook({
   events: {

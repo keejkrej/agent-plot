@@ -6,11 +6,12 @@
   "imports": {
     "#*": "./agent/*",
     "#evals/*": "./evals/*",
-    "#lib/*": "./src/lib/*"
+    "#lib/*": "./agent/lib/*"
   },
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "pnpm build:agent-lib && next build",
+    "build:agent-lib": "node scripts/build-agent-lib.mjs",
+    "dev": "pnpm build:agent-lib && next dev",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
@@ -62,6 +63,7 @@
     "@types/react-dom": "19.2.3",
     "@typescript/native-preview": "7.0.0-dev.20260523.1",
     "drizzle-kit": "^0.31.0",
+    "esbuild": "^0.25.0",
     "microsandbox": "^0.5.7",
     "typescript": "5.9.3"
   },

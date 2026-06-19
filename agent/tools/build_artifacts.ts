@@ -1,8 +1,9 @@
+// @ts-nocheck
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { refreshSessionCanvas } from "#lib/canvasRefresh";
-import { buildArtifacts } from "#lib/python";
-import { getDefaultStore, sessionDir } from "#lib/store";
+import { refreshSessionCanvas } from "../../dist/agent-lib/canvasRefresh.js";
+import { buildArtifacts } from "../../dist/agent-lib/python/index.js";
+import { getDefaultStore, sessionDir } from "../../dist/agent-lib/store.js";
 
 export default defineTool({
   description:

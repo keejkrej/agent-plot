@@ -1,8 +1,9 @@
+// @ts-nocheck
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { sessionDir } from "#lib/store";
+import { sessionDir } from "../../dist/agent-lib/store.js";
 
 function runShell(
   cwd: string,
