@@ -1,14 +1,12 @@
 import type { CanvasSpec } from "#lib/contracts";
 import { applyCanvasVisibility, type CanvasVisibility } from "#lib/canvasIntent";
 import { jsonRender } from "#lib/mergeCanvas";
-import { buildArtifacts, type PythonResult } from "#lib/python";
+import { buildArtifacts } from "#lib/python";
 import type { SessionStore } from "#lib/store";
 
 const ARTIFACT_PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "";
 
 const defaultPayload = {
-  raw: "./artifacts/raw_preview.png",
-  fft: "./artifacts/fft_mag.png",
   stats: "./artifacts/stats.csv",
   meta: "./artifacts/meta.json",
   summary: "./artifacts/summary.json",
@@ -19,7 +17,7 @@ export type CanvasRefreshResult =
   | { ok: false; artifactNote: string; error?: string };
 
 export type RefreshSessionCanvasOptions = {
-  /** When true, run build_artifacts if stats.csv is missing (upload shortcut only). */
+  /** When true, run build_artifacts if stats.csv is missing. */
   readonly buildIfMissing?: boolean;
 };
 

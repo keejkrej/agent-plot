@@ -26,16 +26,14 @@ function ensureSessionDir(id: string): void {
 }
 
 export type CanvasVisibility = {
-  raw: boolean;
-  fft: boolean;
-  line: boolean;
+  table: boolean;
+  metrics: boolean;
+  bar: boolean;
   hist: boolean;
-  meta: boolean;
-  rowMean: boolean;
 };
 
 function defaultCanvasVisibility(): CanvasVisibility {
-  return { raw: true, fft: true, line: true, hist: true, meta: true, rowMean: true };
+  return { table: true, metrics: true, bar: true, hist: true };
 }
 
 export type SessionListEntry = {

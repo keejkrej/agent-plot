@@ -4,17 +4,17 @@
     "main": {
       "type": "Stack",
       "props": { "direction": "column", "gap": 20 },
-      "children": ["title", "alerts", "metaSection", "images", "charts", "chartsRowMean"]
+      "children": ["title", "alerts", "metaSection", "charts"]
     },
     "title": {
       "type": "Caption",
-      "props": { "text": "Data overview (raw · FFT · meta · stats)" },
+      "props": { "text": "Analysis results" },
       "children": []
     },
     "alerts": {
       "type": "Alert",
       "props": {
-        "title": "QC notes",
+        "title": "Notes",
         "message": { "$payload": "summaryAlertMessage" },
         "variant": "warning"
       },
@@ -23,7 +23,7 @@
     "metaSection": {
       "type": "Stack",
       "props": { "direction": "column", "gap": 12 },
-      "children": ["metaDivider", "metaMetrics", "metaKv", "summaryTable"]
+      "children": ["metaDivider", "metaMetrics", "summaryTable"]
     },
     "metaDivider": {
       "type": "Divider",
@@ -33,41 +33,21 @@
     "metaMetrics": {
       "type": "MetricGrid",
       "props": { "columns": 3, "gap": 8 },
-      "children": ["mShape", "mDtype", "mMin", "mMax", "mP1", "mP99"]
+      "children": ["mRowCount", "mAccuracy", "mSurvivalRate"]
     },
-    "mShape": {
+    "mRowCount": {
       "type": "Metric",
-      "props": { "label": "Shape", "value": { "$payload": "metaShape" } },
+      "props": { "label": "Rows", "value": { "$payload": "rowCount" } },
       "children": []
     },
-    "mDtype": {
+    "mAccuracy": {
       "type": "Metric",
-      "props": { "label": "Dtype", "value": { "$payload": "metaDtype" } },
+      "props": { "label": "Accuracy", "value": { "$payload": "accuracy" } },
       "children": []
     },
-    "mMin": {
+    "mSurvivalRate": {
       "type": "Metric",
-      "props": { "label": "Min", "value": { "$payload": "metaMin" } },
-      "children": []
-    },
-    "mMax": {
-      "type": "Metric",
-      "props": { "label": "Max", "value": { "$payload": "metaMax" } },
-      "children": []
-    },
-    "mP1": {
-      "type": "Metric",
-      "props": { "label": "p1", "value": { "$payload": "metaP1" } },
-      "children": []
-    },
-    "mP99": {
-      "type": "Metric",
-      "props": { "label": "p99", "value": { "$payload": "metaP99" } },
-      "children": []
-    },
-    "metaKv": {
-      "type": "KeyValueList",
-      "props": { "items": { "$payload": "metaItems" } },
+      "props": { "label": "Survival rate", "value": { "$payload": "survivalRate" } },
       "children": []
     },
     "summaryTable": {
@@ -79,55 +59,26 @@
       },
       "children": []
     },
-    "images": {
-      "type": "Stack",
-      "props": { "direction": "row", "gap": 12 },
-      "children": ["rawImg", "fftImg"]
-    },
-    "rawImg": {
-      "type": "PreviewImage",
-      "props": { "src": { "$payload": "raw" }, "caption": "Raw (scaled)" },
-      "children": []
-    },
-    "fftImg": {
-      "type": "PreviewImage",
-      "props": { "src": { "$payload": "fft" }, "caption": "FFT magnitude (log)" },
-      "children": []
-    },
     "charts": {
-      "type": "Stack",
-      "props": { "direction": "row", "gap": 16 },
-      "children": ["line", "hist"]
+      "type": "Grid",
+      "props": { "columns": 1, "gap": 16 },
+      "children": ["barPlot", "histPlot"]
     },
-    "line": {
-      "type": "LinePlot",
+    "barPlot": {
+      "type": "BarChart",
       "props": {
-        "title": "Mid-row profile",
-        "x": { "$payload": "lineX" },
-        "y": { "$payload": "lineY" }
+        "title": "Survival rate by category",
+        "labels": { "$payload": "barX" },
+        "values": { "$payload": "barY" }
       },
       "children": []
     },
-    "hist": {
+    "histPlot": {
       "type": "Histogram",
       "props": {
-        "title": "Intensity histogram (sampled)",
+        "title": "Distribution",
         "x": { "$payload": "histX" },
         "y": { "$payload": "histY" }
-      },
-      "children": []
-    },
-    "chartsRowMean": {
-      "type": "Stack",
-      "props": { "direction": "row", "gap": 16 },
-      "children": ["rowMean"]
-    },
-    "rowMean": {
-      "type": "LinePlot",
-      "props": {
-        "title": "Row mean intensity",
-        "x": { "$payload": "rowMeanX" },
-        "y": { "$payload": "rowMeanY" }
       },
       "children": []
     }

@@ -1,152 +1,129 @@
-"""
-Build imaging artifacts for a session directory.
-argv[1] = session_dir; optional argv[2] = absolute TIFF path.
-Otherwise uses session_dir/input*.tif*.
-Writes:
-  artifacts/raw_preview.png
-  artifacts/fft_mag.png
-  artifacts/stats.csv   (columns: kind,x,y — profile, hist, row_mean)
-  artifacts/meta.json
-  artifacts/summary.json
-"""
-from __future__ import annotations
+#!/usr/bin/env python3
+"""Build a json-render canvas spec from CSV analysis artifacts.
 
+Reads:
+  - artifacts/meta.json
+  - artifacts/summary.json
+  - artifacts/stats.csv (kind,x,y rows)
+  - artifacts/*.png files
+
+Writes:
+  - artifacts/canvas.json (merged canvas spec)
+  - stdout: {"ok": True, "spec": ...}
+"""
+import csv
 import json
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import tifffile as tiff
-from PIL import Image
 
-from _tiff_resolve import resolve_tif_path
+def load_stats(session_dir: Path):
+    stats_path = session_dir / "artifacts" / "stats.csv"
+    if not stats_path.exists():
+        return {}
+
+    series = {}
+    with stats_path.open("r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            kind = row.get("kind", "")
+            x = row.get("x", "")
+            y = row.get("y", "")
+            if not kind:
+                continue
+            series.setdefault(f"{kind}X", []).append(x)
+            series.setdefault(f"{kind}Y", []).append(y)
+    return series
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print(json.dumps({"ok": False, "error": "missing session_dir"}))
-        sys.exit(1)
-    session_dir = Path(sys.argv[1]).resolve()
-    art = session_dir / "artifacts"
-    art.mkdir(parents=True, exist_ok=True)
+def load_payload(session_dir: Path):
+    payload = {}
+    for name in ["meta.json", "summary.json"]:
+        path = session_dir / "artifacts" / name
+        if path.exists():
+            try:
+                payload.update(json.loads(path.read_text()))
+            except Exception:
+                pass
+    payload.update(load_stats(session_dir))
+    return payload
 
-    tif_path = resolve_tif_path(session_dir)
 
-    vol = tiff.imread(str(tif_path))
-    slice_index = 0
-    if vol.ndim == 3:
-        if vol.shape[-1] <= 4 and vol.shape[0] > 8:
-            slice_index = vol.shape[0] // 2
-            img = vol[slice_index]
-        elif vol.shape[0] <= 4:
-            img = vol[..., 0]
-        else:
-            slice_index = vol.shape[0] // 2
-            img = vol[slice_index]
+def build_spec(session_dir: str):
+    session = Path(session_dir)
+    artifacts = session / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+
+    payload = load_payload(session)
+    pngs = sorted(artifacts.glob("*.png"))
+
+    elements = {}
+
+    def add(id: str, el):
+        elements[id] = el
+
+    add("root", {"type": "Stack", "props": {"direction": "column", "gap": 16}, "children": ["title", "metrics", "plots"]})
+    add("title", {"type": "Caption", "props": {"text": payload.get("title", "Analysis results")}})
+
+    metrics = []
+    for key in ["rowCount", "accuracy", "survivalRate"]:
+        if key in payload:
+            metrics.append({"label": key, "value": str(payload[key])})
+    if metrics:
+        add("metrics", {"type": "MetricGrid", "props": {"columns": min(len(metrics), 3)}, "children": [f"metric_{i}" for i in range(len(metrics))]})
+        for i, m in enumerate(metrics):
+            add(f"metric_{i}", {"type": "Metric", "props": {"label": m["label"], "value": m["value"]}})
     else:
-        img = vol
+        add("metrics", {"type": "Text", "props": {"text": "No metrics available.", "variant": "muted"}})
 
-    img = np.asarray(img, dtype=np.float32)
-    h, w = img.shape[:2]
-    dtype_str = str(vol.dtype)
+    plot_children = []
 
-    lo_img, hi_img = float(np.min(img)), float(np.max(img))
-    p1, p99 = float(np.percentile(img, 1)), float(np.percentile(img, 99))
+    table = payload.get("table")
+    if isinstance(table, list) and table:
+        columns = list(table[0].keys()) if table else []
+        rows = [[str(row.get(c, "")) for c in columns] for row in table]
+        add("table", {"type": "Table", "props": {"caption": "Summary", "columns": columns, "rows": rows}})
+        plot_children.append("table")
 
-    # Raw preview: robust min-max per image, uint8 PNG
-    lo, hi = np.percentile(img, (1.0, 99.0))
-    if hi <= lo:
-        lo, hi = float(img.min()), float(img.max()) + 1e-6
-    norm = np.clip((img - lo) / (hi - lo), 0, 1)
-    u8 = (norm * 255).astype(np.uint8)
-    Image.fromarray(u8, mode="L").save(art / "raw_preview.png", optimize=True)
-
-    # FFT magnitude (log), on same 2D slice
-    f = np.fft.fftshift(np.fft.fft2(img))
-    mag = np.log1p(np.abs(f))
-    mlo, mhi = np.percentile(mag, (1.0, 99.5))
-    if mhi <= mlo:
-        mlo, mhi = float(mag.min()), float(mag.max()) + 1e-6
-    mnorm = np.clip((mag - mlo) / (mhi - mlo), 0, 1)
-    mag_u8 = (mnorm * 255).astype(np.uint8)
-    Image.fromarray(mag_u8, mode="L").save(art / "fft_mag.png", optimize=True)
-
-    row_mean = img.mean(axis=1)
-    mid_row = img[h // 2, :]
-    profile_x = np.arange(mid_row.size, dtype=float)
-    profile_y = mid_row.astype(float)
-    row_mean_x = np.arange(row_mean.size, dtype=float)
-
-    flat = img.ravel()
-    if flat.size > 200_000:
-        rng = np.random.default_rng(0)
-        flat = rng.choice(flat, size=200_000, replace=False)
-    counts, edges = np.histogram(flat, bins=64)
-    centers = (edges[:-1] + edges[1:]) / 2.0
-    peak_idx = int(np.argmax(counts))
-    histogram_peak = float(centers[peak_idx])
-    dynamic_range = float(p99 - p1) if p99 > p1 else 0.0
-
-    rows = []
-    for x, y in zip(profile_x, profile_y):
-        rows.append({"kind": "profile", "x": float(x), "y": float(y)})
-    for x, y in zip(centers, counts.astype(float)):
-        rows.append({"kind": "hist", "x": float(x), "y": float(y)})
-    for x, y in zip(row_mean_x, row_mean.astype(float)):
-        rows.append({"kind": "row_mean", "x": float(x), "y": float(y)})
-    pd.DataFrame(rows).to_csv(art / "stats.csv", index=False)
-
-    shape = list(vol.shape) if vol.ndim else [int(vol.size)]
-    meta = {
-        "shape": shape,
-        "dtype": dtype_str,
-        "min": lo_img,
-        "max": hi_img,
-        "p1": p1,
-        "p99": p99,
-        "width": int(w),
-        "height": int(h),
-        "sliceIndex": int(slice_index),
+    plot_kinds = {
+        "line": "LinePlot",
+        "hist": "Histogram",
+        "scatter": "ScatterPlot",
+        "bar": "BarChart",
     }
-    (art / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    for kind, component in plot_kinds.items():
+        xs = payload.get(f"{kind}X", [])
+        ys = payload.get(f"{kind}Y", [])
+        if not xs or not ys:
+            continue
+        pid = f"{kind}_plot"
+        if component == "BarChart":
+            add(pid, {"type": component, "props": {"title": kind.capitalize(), "labels": xs, "values": ys}})
+        else:
+            add(pid, {"type": component, "props": {"title": kind.capitalize(), "x": xs, "y": ys}})
+        plot_children.append(pid)
 
-    warnings: list[str] = []
-    if dynamic_range < 1e-6:
-        warnings.append("Very low dynamic range (p99 − p1 ≈ 0); image may be flat or constant.")
-    if lo_img == hi_img:
-        warnings.append("Slice min equals max; no intensity variation in preview slice.")
-    if hi_img > 1e6 or lo_img < -1e6:
-        warnings.append("Extreme intensity values; check dtype scaling before quantification.")
+    for i, png in enumerate(pngs):
+        pid = f"img_{i}"
+        add(pid, {"type": "PreviewImage", "props": {"src": f"/api/artifacts/{png.name}", "caption": png.stem}})
+        plot_children.append(pid)
 
-    summary = {
-        "warnings": warnings,
-        "histogramPeak": histogram_peak,
-        "dynamicRange": dynamic_range,
-        "table": {
-            "columns": ["Metric", "Value"],
-            "rows": [
-                ["Dynamic range (p99−p1)", f"{dynamic_range:.4g}"],
-                ["Histogram peak (bin center)", f"{histogram_peak:.4g}"],
-                ["Slice min / max", f"{lo_img:.4g} / {hi_img:.4g}"],
-            ],
-        },
-    }
-    (art / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if plot_children:
+        add("plots", {"type": "Grid", "props": {"columns": 1, "gap": 12}, "children": plot_children})
+    else:
+        add("plots", {"type": "Text", "props": {"text": "No plots or tables generated yet.", "variant": "muted"}})
 
-    out = {
-        "ok": True,
-        "shape": shape,
-        "preview": {
-            "raw": "artifacts/raw_preview.png",
-            "fft": "artifacts/fft_mag.png",
-            "stats": "artifacts/stats.csv",
-            "meta": "artifacts/meta.json",
-            "summary": "artifacts/summary.json",
-        },
-    }
-    print(json.dumps(out))
+    spec = {"root": "root", "elements": elements}
+
+    canvas_path = artifacts / "canvas.json"
+    canvas_path.write_text(json.dumps(spec, indent=2))
+
+    print(json.dumps({"ok": True, "spec": spec}))
+    return spec
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        print(json.dumps({"ok": False, "error": "expected session_dir"}), file=sys.stderr)
+        sys.exit(1)
+    build_spec(sys.argv[1])

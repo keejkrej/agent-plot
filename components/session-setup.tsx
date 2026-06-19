@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import {
   readSessionContext,
   writeSessionContext,
-  generateSampleData,
+  prepareTitanicExample,
 } from "@/app/_actions/session";
 
 export function SessionSetup({ sessionId }: { sessionId: string }) {
@@ -27,7 +27,7 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
   });
   const [dataFolder, setDataFolder] = useState("");
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const goalId = useId();
   const backgroundId = useId();
@@ -66,16 +66,17 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
     }
   };
 
-  const handleGenerate = async () => {
+  const handlePrepareTitanic = async () => {
     if (!sessionId) return;
-    setGenerating(true);
-    const result = await generateSampleData(sessionId);
-    setGenerating(false);
-    setMessage(
-      result.ok
-        ? "Sample data generated in the session data folder."
-        : `Generation failed: ${result.error}`,
-    );
+    setPreparing(true);
+    const result = await prepareTitanicExample();
+    setPreparing(false);
+    if (result.ok && result.folder) {
+      setDataFolder(result.folder);
+      setMessage(`Titanic example ready at ${result.folder}. Click Save context to use it.`);
+    } else {
+      setMessage(`Setup failed: ${result.error}`);
+    }
   };
 
   return (
@@ -155,13 +156,13 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
               {saving ? "Saving…" : "Save context"}
             </Button>
             <Button
-              disabled={generating || !sessionId}
-              onClick={handleGenerate}
+              disabled={preparing || !sessionId}
+              onClick={handlePrepareTitanic}
               size="sm"
               variant="secondary"
             >
               <SparklesIcon className="mr-2 size-4" />
-              {generating ? "Generating…" : "Generate sample data"}
+              {preparing ? "Preparing…" : "Prepare Titanic example"}
             </Button>
           </div>
           {message ? (

@@ -7,10 +7,8 @@ import { getDefaultStore, sessionDir } from "#lib/store";
 export default defineTool({
   description:
     "Build the json-render canvas artifacts for the session. " +
-    "For TIFF data, pass the TIFF path. After this succeeds, the canvas will refresh and the returned spec can be rendered.",
-  inputSchema: z.object({
-    tiff_path: z.string().optional().describe("Optional absolute path to a TIFF file"),
-  }),
+    "Call this after writing analysis CSV/JSON/PNG artifacts to refresh the canvas panel.",
+  inputSchema: z.object({}),
   outputSchema: z.object({
     ok: z.boolean(),
     spec: z.unknown().optional(),
@@ -19,10 +17,10 @@ export default defineTool({
     code: z.number().nullable().optional(),
     error: z.string().optional(),
   }),
-  async execute({ tiff_path }, ctx) {
+  async execute(_input, ctx) {
     const store = getDefaultStore();
     const dir = sessionDir(ctx.session.id);
-    const buildResult = await buildArtifacts(dir, tiff_path);
+    const buildResult = await buildArtifacts(dir);
     if (!buildResult.ok) {
       return { ok: false, stderr: buildResult.stderr, code: buildResult.code };
     }

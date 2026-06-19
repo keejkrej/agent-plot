@@ -31,6 +31,9 @@ export const UV_PYTHON_INSTALL_DIR = path.join(UV_ROOT, "python");
 export const UV_CACHE_DIR = path.join(UV_ROOT, "cache");
 export const UV_TEMP_DIR = path.join(UV_ROOT, "tmp");
 
+/** Example datasets shipped with the app. */
+export const EXAMPLES_DIR = path.join(AGENT_PLOT_HOME, "examples");
+
 /** Runtime data: DB and sessions live under AGENT_PLOT_HOME. */
 export const DATA_DIR = process.env.AGENT_PLOT_DATA_DIR?.trim()
   ? path.resolve(process.env.AGENT_PLOT_DATA_DIR.trim())

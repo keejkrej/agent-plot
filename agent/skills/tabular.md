@@ -1,10 +1,12 @@
 ---
-description: Analyze tabular data such as CSV, TSV, JSON, Parquet, or Excel files.
+description: Analyze tabular CSV datasets, especially the Titanic survival demo.
 ---
 
 # Tabular analysis skill
 
 Use this skill when the user points at `.csv`, `.tsv`, `.json`, `.parquet`, `.xlsx`, or similar tabular data.
+
+For the MVP demo, focus on the classic **Titanic** survival classification dataset.
 
 ## Quick inspection
 
@@ -22,27 +24,34 @@ For tabular data, produce:
 
 - `artifacts/meta.json` — object with `columns`, `rowCount`, `dtypes`, `missingCounts`.
 - `artifacts/summary.json` — object with `warnings` and a `table` of key metrics.
-- `artifacts/stats.csv` — numeric series the user wants plotted (e.g. `kind,x,y` rows for `LinePlot`, `Histogram`, `ScatterPlot`, or `BarChart`).
-- Optional `artifacts/result_*.png` — matplotlib/seaborn plots saved as PNG.
+- `artifacts/stats.csv` — numeric series the user wants plotted. Each row is `kind,x,y`.
+  - `kind=line`, x = numeric or index, y = value column.
+  - `kind=hist`, x = bin center, y = count.
+  - `kind=scatter`, x = one numeric column, y = another.
+  - `kind=bar`, x = category label, y = numeric value.
+- Optional `artifacts/*.png` — matplotlib/seaborn plots saved as PNG.
 - Optional `result_*.csv` or `result_*.json` — processed tables the user asked for.
 
-## Plotting conventions
+## Titanic-specific guidance
 
-- Line plot: use `kind=line`, x = numeric or index, y = value column.
-- Histogram: use `kind=hist`, x = bin center, y = count.
-- Scatter plot: use `kind=scatter`, x = one numeric column, y = another.
-- Bar chart: use `kind=bar`, x = category label, y = numeric value.
+When analyzing the Titanic CSV:
 
-Store each series in `artifacts/stats.csv` with columns `kind,x,y`. The UI merges all matching rows by `kind`.
+- Target column is `Survived` (0 = No, 1 = Yes).
+- Key categorical predictors: `Pclass`, `Sex`, `Embarked`.
+- Key numeric predictors: `Age`, `Fare`, `SibSp`, `Parch`.
+- Common engineered feature: `FamilySize = SibSp + Parch + 1`.
+- Encode `Sex` as 0/1 and `Embarked` with one-hot or ordinal encoding before modeling.
+- Use lightweight models (LogisticRegression or a small RandomForest) for fast demos.
+- Report accuracy, precision/recall, and feature importance.
 
 ## Display panels
 
-The default canvas template is imaging-oriented, but you can write a custom `canvas.json` in the session directory that uses any of these json-render components: Stack, Grid, Divider, Caption, Metric, MetricGrid, KeyValueList, Table, Text, Alert, PreviewImage, LinePlot, Histogram, ScatterPlot, BarChart.
+The default canvas template uses json-render components: Stack, Grid, Divider, Caption, Metric, MetricGrid, KeyValueList, Table, Text, Alert, PreviewImage, LinePlot, Histogram, ScatterPlot, BarChart.
 
-Use `$payload` references in props. The merged payload includes everything from `meta.json`, `summary.json`, and the computed series names from `stats.csv` (e.g. `lineX`, `lineY`, `histX`, `histY`, `rowMeanX`, `rowMeanY`).
+Use `$payload` references in props. The merged payload includes everything from `meta.json`, `summary.json`, and the computed series from `stats.csv`.
 
-If you only need tables and metrics, hide image panels with `set_canvas_visibility` and either rely on the default template or provide a custom `canvas.json` focused on Table, Metric, KeyValueList, and Text blocks.
+If the user only wants tables and metrics, hide image panels with `set_canvas_visibility`.
 
 ## Reproducibility
 
-Write the analysis script to `scripts/<analysis_name>.py` in the session workspace. Include comments and use a fixed random seed when sampling. Save any derived datasets as CSV under `artifacts/` or the session root.
+Write the analysis script to `scripts/<analysis_name>.py` in the session workspace. Include comments and use a fixed random seed. Save derived datasets as CSV under `artifacts/` or the session root.
