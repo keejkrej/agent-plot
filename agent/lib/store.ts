@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DATA_DIR, SESSIONS_ROOT_PATH } from "#lib/python/paths";
+import { AGENT_PLOT_HOME, DATA_DIR, SESSIONS_ROOT_PATH } from "#lib/python/paths";
 import type {
   ActivitySnapshot,
   ChatMessageRole,
@@ -23,6 +23,22 @@ export function sessionDir(id: string): string {
 
 function ensureSessionDir(id: string): void {
   fs.mkdirSync(path.join(sessionDir(id), "artifacts"), { recursive: true });
+}
+
+const DEFAULT_CONTEXT_PATH = path.join(AGENT_PLOT_HOME, "default-context.json");
+
+function readDefaultContextFile(): SessionContext {
+  try {
+    const raw = fs.readFileSync(DEFAULT_CONTEXT_PATH, "utf8");
+    return JSON.parse(raw) as SessionContext;
+  } catch {
+    return {};
+  }
+}
+
+function writeDefaultContextFile(context: SessionContext): void {
+  fs.mkdirSync(path.dirname(DEFAULT_CONTEXT_PATH), { recursive: true });
+  fs.writeFileSync(DEFAULT_CONTEXT_PATH, JSON.stringify(context, null, 2));
 }
 
 export type CanvasVisibility = {
@@ -124,6 +140,16 @@ export class SessionStore {
       .update(schema.sessions)
       .set({ context: next, updatedAt: new Date() })
       .where(eq(schema.sessions.id, sessionId));
+  }
+
+  async readDefaultSessionContext(): Promise<SessionContext> {
+    return readDefaultContextFile();
+  }
+
+  async updateDefaultSessionContext(context: Partial<SessionContext>): Promise<void> {
+    const existing = readDefaultContextFile();
+    const next: SessionContext = { ...existing, ...context };
+    writeDefaultContextFile(next);
   }
 
   async getChatMessage(sessionId: string, messageId: string): Promise<ChatMessageSnapshot | null> {

@@ -28,9 +28,6 @@ export function AgentChat() {
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const isEmpty = agent.data.messages.length === 0;
   const canvasSpec = useCanvasSpec(agent.data);
-  // Eve creates its own session id on the first turn; our session.started hook
-  // creates the matching workspace directory.
-  const eveSessionId = agent.session?.sessionId ?? "";
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text.trim();
@@ -67,7 +64,7 @@ export function AgentChat() {
           </div>
           <div className="w-full max-w-xl px-4 sm:px-6">{composer}</div>
           <div className="flex items-center gap-2">
-            <SessionSetup sessionId={eveSessionId} />
+            <SessionSetup sessionId={agent.session?.sessionId} />
           </div>
         </div>
       ) : (
@@ -78,7 +75,7 @@ export function AgentChat() {
                 <span className="truncate text-muted-foreground text-sm">{AGENT_NAME}</span>
                 <StatusDot status={agent.status} />
               </span>
-              <SessionSetup sessionId={eveSessionId} />
+              <SessionSetup sessionId={agent.session?.sessionId} />
             </header>
 
             <Conversation className="min-h-0 flex-1">

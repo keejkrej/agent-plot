@@ -14,12 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
-  readSessionContext,
-  writeSessionContext,
+  readDefaultSessionContext,
+  writeDefaultSessionContext,
   prepareTitanicExample,
 } from "@/app/_actions/session";
 
-export function SessionSetup({ sessionId }: { sessionId: string }) {
+export function SessionSetup({ sessionId }: { sessionId?: string }) {
   const [open, setOpen] = useState(false);
   const [context, setContext] = useState({
     experimentalGoal: "",
@@ -36,10 +36,10 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
   const folderId = useId();
 
   useEffect(() => {
-    if (!open || !sessionId) return;
+    if (!open) return;
     let active = true;
-    readSessionContext(sessionId).then((ctx) => {
-      if (!active || !ctx) return;
+    readDefaultSessionContext().then((ctx) => {
+      if (!active) return;
       setContext({
         experimentalGoal: ctx.experimentalGoal ?? "",
         scientificBackground: ctx.scientificBackground ?? "",
@@ -50,14 +50,13 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
     return () => {
       active = false;
     };
-  }, [open, sessionId]);
+  }, [open]);
 
   const handleSave = async () => {
-    if (!sessionId) return;
     setSaving(true);
-    const result = await writeSessionContext(sessionId, {
+    const result = await writeDefaultSessionContext({
       ...context,
-      // Store the local data folder in the session context so the assistant can see it.
+      // Store the local data folder in the default context so the assistant can see it.
       dataFolder: dataFolder.trim() || undefined,
     });
     setSaving(false);
@@ -73,21 +72,7 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
     setPreparing(false);
     if (result.ok && result.folder) {
       setDataFolder(result.folder);
-      if (sessionId) {
-        const save = await writeSessionContext(sessionId, {
-          ...context,
-          dataFolder: result.folder,
-        });
-        setMessage(
-          save.ok
-            ? `Titanic example ready and saved to context.`
-            : `Titanic example ready, but saving context failed: ${save.error}`,
-        );
-      } else {
-        setMessage(
-          `Titanic example ready at ${result.folder}. Start a chat, then reopen Session setup and click Save context to link it.`,
-        );
-      }
+      setMessage("Titanic example ready and saved to context.");
     } else {
       setMessage(`Setup failed: ${result.error}`);
     }
@@ -166,7 +151,7 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              disabled={saving || !sessionId}
+              disabled={saving}
               onClick={handleSave}
               size="sm"
             >

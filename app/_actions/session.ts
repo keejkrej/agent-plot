@@ -37,6 +37,23 @@ export async function writeSessionContext(
   }
 }
 
+export async function readDefaultSessionContext(): Promise<SessionContext> {
+  const store = getDefaultStore();
+  return store.readDefaultSessionContext();
+}
+
+export async function writeDefaultSessionContext(
+  context: Partial<SessionContext>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const store = getDefaultStore();
+    await store.updateDefaultSessionContext(context);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
 export async function prepareTitanicExample(): Promise<{ ok: boolean; error?: string; folder?: string }> {
   try {
     const script = path.join(
@@ -50,7 +67,9 @@ export async function prepareTitanicExample(): Promise<{ ok: boolean; error?: st
     if (result.code !== 0) {
       return { ok: false, error: result.stderr || result.stdout || "unknown error" };
     }
-    return { ok: true, folder: path.join(EXAMPLES_DIR, "titanic") };
+    const folder = path.join(EXAMPLES_DIR, "titanic");
+    await writeDefaultSessionContext({ dataFolder: folder });
+    return { ok: true, folder };
   } catch (error) {
     return { ok: false, error: String(error) };
   }

@@ -1,5 +1,19 @@
-import { eveChannel } from "eve/channels/eve";
+// @ts-nocheck
+import { eveChannel, defaultEveAuth } from "eve/channels/eve";
 import { localDev, placeholderAuth, vercelOidc } from "eve/channels/auth";
+import { getDefaultStore } from "../../dist/agent-lib/store.js";
+
+function contextStrings(ctx: Awaited<ReturnType<ReturnType<typeof getDefaultStore>["readDefaultSessionContext"]>>): string[] {
+  const parts: string[] = [];
+  if (ctx.experimentalGoal) parts.push(`Experimental goal: ${ctx.experimentalGoal}`);
+  if (ctx.scientificBackground) parts.push(`Scientific background: ${ctx.scientificBackground}`);
+  if (ctx.preferredOutputFormat) parts.push(`Preferred output format: ${ctx.preferredOutputFormat}`);
+  if (ctx.dataFolder) {
+    parts.push(`Local data folder: ${ctx.dataFolder}`);
+    parts.push(`When the user asks about their data, default to reading files from ${ctx.dataFolder}.`);
+  }
+  return parts;
+}
 
 export default eveChannel({
   auth: [
@@ -12,4 +26,13 @@ export default eveChannel({
     // or use none() for a public demo.
     placeholderAuth(),
   ],
+  async onMessage(ctx, _message) {
+    const store = getDefaultStore();
+    const sessionContext = await store.readDefaultSessionContext();
+    const parts = contextStrings(sessionContext);
+    return {
+      auth: defaultEveAuth(ctx),
+      context: parts.length > 0 ? [`## User context\n\n${parts.join("\n\n")}`] : undefined,
+    };
+  },
 });

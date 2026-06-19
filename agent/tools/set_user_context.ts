@@ -25,10 +25,10 @@ export default defineTool({
     ok: z.boolean(),
     context: z.record(z.string(), z.string()).optional(),
   }),
-  async execute(context, ctx) {
+  async execute(context) {
     const store = getDefaultStore();
     const next = stripUndefined(context) as Record<string, string>;
-    await store.updateSessionContext(ctx.session.id, next);
+    await store.updateDefaultSessionContext(next);
     return { ok: true, context: next };
   },
 });
