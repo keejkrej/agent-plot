@@ -1,19 +1,80 @@
 {
   "name": "agent-plot",
+  "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
+  "type": "module",
+  "imports": {
+    "#*": "./agent/*",
+    "#evals/*": "./evals/*",
+    "#lib/*": "./src/lib/*"
+  },
   "scripts": {
-    "dev": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app --filter @agent-plot/worker --filter @agent-plot/web --parallel dev",
-    "dev:ws-hub": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app dev",
-    "dev:web": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/web dev",
-    "build": "pnpm run -r build",
-    "typecheck": "pnpm run -r typecheck"
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.73",
+    "@json-render/core": "^0.19.0",
+    "@json-render/react": "^0.19.0",
+    "@radix-ui/react-use-controllable-state": "1.2.2",
+    "@vercel/connect": "0.2.2",
+    "ai": "7.0.0-beta.178",
+    "better-sqlite3": "^12.3.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "csv-parse": "^6.1.0",
+    "drizzle-orm": "^0.42.0",
+    "eve": "^0.11.7",
+    "lucide-react": "1.16.0",
+    "motion": "12.40.0",
+    "nanoid": "5.1.11",
+    "next": "16.2.6",
+    "radix-ui": "1.4.3",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "4.1.0",
+    "streamdown": "2.5.0",
+    "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.0",
+    "use-stick-to-bottom": "1.1.4",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "@shikijs/core": "4.1.0",
+    "@shikijs/engine-javascript": "4.1.0",
+    "@shikijs/engine-oniguruma": "4.1.0",
+    "@streamdown/cjk": "1.0.3",
+    "@streamdown/code": "1.1.1",
+    "@streamdown/math": "1.0.2",
+    "@streamdown/mermaid": "1.0.2",
+    "@tailwindcss/postcss": "4.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "24.x",
+    "@types/react": "19.2.15",
+    "@types/react-dom": "19.2.3",
+    "@typescript/native-preview": "7.0.0-dev.20260523.1",
+    "drizzle-kit": "^0.31.0",
+    "microsandbox": "^0.5.7",
+    "typescript": "5.9.3"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "sqlite3"]
+    "overrides": {
+      "ai": "7.0.0-beta.178"
+    },
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

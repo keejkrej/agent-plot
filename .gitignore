@@ -1,21 +1,14 @@
-# Dependencies
 node_modules
-
-# Build outputs
-dist
-apps/desktop/dist-electron
-apps/desktop/.electron-runtime
-.turbo
-*.tsbuildinfo
-
-# Next.js
+.env*
+.eve
+.vercel
+.workflow-data
 .next
-
-# SQLite runtime DB
-data/*.db*
-
-# Rust
-crates/target/
+.output
+.nitro
+dist
+.DS_Store
+*.tsbuildinfo
 
 # Python
 __pycache__/
@@ -24,16 +17,7 @@ __pycache__/
 .Python
 .venv/
 python/analysis/.venv/
-packages/server/python/.venv
 
-# Local env
-*.local
-.env
-.env.*
-
-# Runtime session data (repo root + python dev copies)
-data/sessions/
-python/analysis/data/
-
-# OS
-.DS_Store
+# SQLite runtime DB / sessions
+data/
+~/.agent-plot/

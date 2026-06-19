@@ -16,7 +16,7 @@ def main() -> None:
         print(json.dumps({"ok": False, "error": "missing session_dir"}))
         sys.exit(1)
     session_dir = Path(sys.argv[1]).resolve()
-    path = resolve_tif_path(session_dir)
+    path = resolve_tif_path(session_dir, sys.argv[2] if len(sys.argv) > 2 else None)
     with tiff.TiffFile(str(path)) as tf:
         series = tf.series[0]
         shape = series.shape

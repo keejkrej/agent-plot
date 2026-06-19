@@ -4,12 +4,11 @@ Chat with an AI agent about scientific data on your local machine. The agent ins
 
 ## Architecture
 
-- **Next.js 15** full-stack app (`apps/web`) with Route Handlers.
-- **SQLite** + Drizzle for sessions, chat history, jobs, and settings.
-- **Standalone WebSocket hub** (`apps/ws-hub`) for real-time UI updates.
-- **Worker** (`apps/worker`) polls a SQLite job queue and runs agent turns.
-- **Agent** (`packages/server-core/src/agent`) is organized in an Eve-style filesystem layout and uses the Vercel AI SDK's `ToolLoopAgent` with `@ai-sdk/openai` pointed at a local Ollama-compatible endpoint.
-- **Python sandbox** (`python/analysis`) provides data helpers and lets the agent write and run arbitrary scripts.
+- **Next.js full-stack app** — the same Node runtime serves the UI and runs the Eve agent. No separate worker, no WebSocket hub.
+- **Eve agent** (`agent/`) is filesystem-first: `agent/agent.ts`, `agent/tools/`, `agent/skills/`, `agent/hooks/`, and `agent/instructions.md`.
+- **SQLite + Drizzle** for sessions, chat history, activities, and artifacts.
+- **AI SDK OpenAI provider** pointed at a local Ollama-compatible endpoint. Default model is `kimi-k2.7-code:cloud`.
+- **Python sandbox** (`python/analysis`) provides data helpers and lets the agent write and run arbitrary scripts under each session.
 
 ## Quick start
 
@@ -18,35 +17,30 @@ Chat with an AI agent about scientific data on your local machine. The agent ins
    pnpm install
    ```
 
-   The app manages its own Python runtime, so you do **not** need a global Python or uv installed to run the agent. You only need [uv](https://docs.astral.sh/uv/getting-started/installation/) to generate the example data below.
-
-2. Generate example data:
-   ```bash
-   uv run --directory python/analysis python scripts/generate_examples.py
-   ```
-
-3. Pull the local model in Ollama:
+2. Pull the local model in Ollama:
    ```bash
    # Default model is kimi-k2.7-code:cloud — make sure it exists in Ollama under that name,
    # or override with a model you have pulled, e.g.:
    # ollama pull qwen2.5-coder:14b
    ```
 
-4. Start Ollama:
+3. Start Ollama:
    ```bash
    ollama serve
    ```
 
-5. Start the app:
+4. Start the app:
    ```bash
    pnpm dev
    ```
 
-   This runs the WebSocket hub, worker, and Next.js web app in parallel.
+5. Open http://localhost:3000, click **Session setup**, and either:
+   - point the agent at a local data folder, or
+   - click **Generate sample data** to create synthetic TIFF/CSV in the session workspace.
 
-6. Open http://localhost:3000, create a session, and try:
-   - `Analyze /Users/jack/workspace/agent-plot/data/examples/sample-image.tif and build a canvas preview`
-   - `Read /Users/jack/workspace/agent-plot/data/examples/experiment.csv and show mean intensity per condition`
+6. Try prompts like:
+   - `Analyze the sample image and build a canvas preview`
+   - `Read the sample time series and plot intensity over time`
 
 ## Configuration
 
@@ -56,12 +50,11 @@ All environment variables are optional unless noted.
 |----------|---------|-------------|
 | `AGENT_PLOT_HOME` | `~/.agent-plot` | Runtime home. Sessions, DB, and the isolated Python environment live here. |
 | `AGENT_PLOT_DATA_DIR` | `$AGENT_PLOT_HOME` | Where sessions and the SQLite database live. |
-| `AGENT_PLOT_AGENT_PROVIDER` | `ollama` | `ollama`, `remote`, or `cursor`. |
-| `AGENT_PLOT_OLLAMA_BASE_URL` | `http://127.0.0.1:11434/v1` | Ollama OpenAI-compatible endpoint. |
 | `AGENT_PLOT_MODEL` | `kimi-k2.7-code:cloud` | Model name. Must exist in Ollama or in your OpenAI-compatible proxy. |
+| `AGENT_PLOT_OLLAMA_BASE_URL` | `http://127.0.0.1:11434/v1` | Ollama OpenAI-compatible endpoint. |
 | `AGENT_PLOT_OLLAMA_API_KEY` | `ollama` | Dummy key for Ollama; ignored by Ollama but required by the SDK. |
-| `AGENT_PLOT_AGENT_URL` | — | OpenAI-compatible endpoint for `remote` provider. |
-| `CURSOR_API_KEY` | — | Required when using `AGENT_PLOT_AGENT_PROVIDER=cursor`. |
+| `OLLAMA_BASE_URL` | — | Fallback for the Ollama endpoint if the `AGENT_PLOT_` variant is not set. |
+| `OLLAMA_API_KEY` | — | Fallback for the Ollama API key. |
 
 ## Agent tools
 
@@ -73,41 +66,42 @@ The agent has filesystem, execution, and canvas tools:
 - `run_shell` — run a shell command in the session directory.
 - `run_python` — write and execute a Python script in the session sandbox.
 - `describe_tiff` — metadata for TIFF files.
-- `build_artifacts` — generate canvas artifacts (images, stats, meta, summary).
+- `build_artifacts` — generate canvas artifacts (images, stats, meta, summary) and return a merged json-render spec.
 - `set_canvas_visibility` — show/hide canvas panels.
-- `set_user_context` — record experimental goal and background.
+- `set_user_context` — record experimental goal, background, preferred output format, and local data folder.
 
 ## Isolated Python runtime
 
-The first time the agent needs Python, the worker bootstraps a self-contained environment under `~/.agent-plot/.uv`:
+The first time the agent needs Python, the app bootstraps a self-contained environment under `~/.agent-plot/.uv`:
 
 - `~/.agent-plot/.uv/bin/uv` — private `uv` binary downloaded from GitHub releases
 - `~/.agent-plot/.uv/python/` — managed CPython install
 - `~/.agent-plot/.uv/venv/` — project virtualenv with numpy, pandas, pillow, tifffile
 - `~/.agent-plot/.uv/cache/` — uv package cache
 
-This keeps the repo clean and avoids depending on the user's system Python.
+The app does **not** use a global `uv` or system Python. It manages its own isolated runtime so the repo stays clean.
 
 ## Session context
 
-Click the settings icon in the chat header to set:
+Click **Session setup** in the chat header to set:
 
 - Experimental goal
 - Scientific background
 - Preferred output format
+- Local data folder
 
 The agent reads this context for every turn and can also update it via the `set_user_context` tool when you describe your experiment in chat.
+
+## json-render canvas
+
+When the agent calls `build_artifacts`, the server merges the generated artifacts into a json-render canvas spec. The right-hand canvas panel extracts that spec from the Eve stream and renders it using the local component catalog (`components/canvas/`). Supported blocks include metrics, tables, alerts, images, line plots, histograms, scatter plots, and bar charts.
 
 ## Development commands
 
 ```bash
-pnpm dev                 # run ws-hub + worker + web
-pnpm dev:web             # run only the Next.js app
-pnpm dev:ws-hub          # run only the WebSocket hub
-pnpm run typecheck       # TypeScript check across the workspace
+pnpm dev                 # run the Next.js app (also the Eve agent runtime)
+pnpm run typecheck       # TypeScript check
 pnpm run build           # production build
+pnpm run db:migrate      # run Drizzle migrations
+pnpm run db:studio       # open Drizzle studio
 ```
-
-## Example datasets
-
-See `data/examples/README.md` for sample prompts against the synthetic TIFF and CSV files.

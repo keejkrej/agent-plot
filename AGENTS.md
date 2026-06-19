@@ -1,11 +1,3 @@
-# AGENTS.md
+# eve Agent App
 
-## Concept
-
-scientific data analysis
-classically: user writes or asks agent to write deterministic pipeline
-our methodology: user points to data and provides context for agent through chatting, agent analyzes the data with a set of tailored tools and generates results ui with json-render using a set of tailored components
-
-## Reference for UI and design pattern
-
-- https://github.com/pingdotgg/t3code or ../t3code local clone
+This project uses the eve framework. Before writing code, always read the relevant guide in `node_modules/eve/docs/`.
