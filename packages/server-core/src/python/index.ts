@@ -1,38 +1,47 @@
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import path from "node:path";
-import { PY_ANALYSIS_ROOT } from "./paths.js";
-
-const PY_ROOT = PY_ANALYSIS_ROOT;
+import { getVenvPython } from "./bootstrap.js";
+import { PY_ANALYSIS_ROOT, UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR } from "./paths.js";
 
 export type PythonResult<T> =
   | { readonly ok: true; readonly data: T }
   | { readonly ok: false; readonly stderr: string; readonly code: number | null };
 
-function runUv(
+function runVenvPython(
   args: string[],
   cwd: string,
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  const uv = process.platform === "win32" ? "uv.cmd" : "uv";
-  const fullArgs = ["run", "--directory", PY_ROOT, "python", ...args];
   return new Promise((resolve, reject) => {
-    const child = spawn(uv, fullArgs, { cwd, windowsHide: true });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`python timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-    child.stdout?.on("data", (d) => (stdout += d.toString()));
-    child.stderr?.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code });
-    });
+    getVenvPython()
+      .then((python) => {
+        const env: NodeJS.ProcessEnv = {
+          ...process.env,
+          UV_PYTHON_INSTALL_DIR,
+          UV_CACHE_DIR,
+          UV_TOOLCHAIN_DIR: UV_PYTHON_INSTALL_DIR,
+          PYTHONPATH: [process.env.PYTHONPATH, PY_ANALYSIS_ROOT].filter(Boolean).join(path.delimiter),
+        };
+        const child = spawn(python, args, { cwd, windowsHide: true, env });
+        let stdout = "";
+        let stderr = "";
+        const timer = setTimeout(() => {
+          child.kill("SIGTERM");
+          reject(new Error(`python timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+        child.stdout?.on("data", (d) => (stdout += d.toString()));
+        child.stderr?.on("data", (d) => (stderr += d.toString()));
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolve({ stdout, stderr, code });
+        });
+      })
+      .catch(reject);
   });
 }
 
@@ -43,10 +52,13 @@ async function runScript<T = unknown>(
   timeoutMs: number,
 ): Promise<PythonResult<T>> {
   try {
-    const script = path.join(PY_ROOT, "scripts", scriptName);
+    const script = path.join(PY_ANALYSIS_ROOT, "scripts", scriptName);
+    if (!fs.existsSync(script)) {
+      return { ok: false, stderr: `builtin script not found: ${script}`, code: null };
+    }
     const args = [script, sessionDir];
     if (tiffPath) args.push(tiffPath);
-    const { stdout, stderr, code } = await runUv(args, sessionDir, timeoutMs);
+    const { stdout, stderr, code } = await runVenvPython(args, sessionDir, timeoutMs);
     if (code !== 0) {
       return { ok: false, stderr: stderr || stdout, code };
     }
@@ -68,4 +80,13 @@ export function buildArtifacts(
   tiffPath?: string,
 ): Promise<PythonResult<unknown>> {
   return runScript("build_artifacts.py", sessionDir, tiffPath, 120_000);
+}
+
+export async function runPythonScript(
+  sessionDir: string,
+  scriptPath: string,
+  args: string[] = [],
+  timeoutMs = 120_000,
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  return runVenvPython([scriptPath, ...args], sessionDir, timeoutMs);
 }

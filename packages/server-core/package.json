@@ -19,7 +19,9 @@
   "dependencies": {
     "@agent-plot/contracts": "workspace:*",
     "@agent-plot/db": "workspace:*",
+    "@ai-sdk/openai": "catalog:",
     "@cursor/sdk": "^1.0.13",
+    "ai": "catalog:",
     "csv-parse": "^6.1.0",
     "drizzle-orm": "^0.42.0",
     "effect": "catalog:",

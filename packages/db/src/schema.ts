@@ -12,7 +12,14 @@ export const sessions = sqliteTable("sessions", {
     .default(sql`(unixepoch('subsec') * 1000)`),
   archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
   dir: text("dir").notNull(),
+  context: text("context", { mode: "json" }).$type<SessionContext>().default(sql`'{}'`),
 });
+
+export type SessionContext = {
+  experimentalGoal?: string;
+  scientificBackground?: string;
+  preferredOutputFormat?: string;
+};
 
 export const chatMessages = sqliteTable("chat_messages", {
   id: text("id").primaryKey(),

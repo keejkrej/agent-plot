@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { DATA_DIR, SESSIONS_ROOT_PATH } from "./python/paths.js";
 import type {
   ActivitySnapshot,
   ChatMessageRole,
@@ -10,12 +11,7 @@ import type {
 } from "@agent-plot/contracts";
 import { and, eq, isNull, not, sql } from "drizzle-orm";
 import * as schema from "@agent-plot/db/schema";
-import { createDatabase, type Database, type NewActivity, type NewChatMessage, type NewJob } from "@agent-plot/db";
-
-const DATA_DIR = process.env.AGENT_PLOT_DATA_DIR?.trim()
-  ? path.resolve(process.env.AGENT_PLOT_DATA_DIR.trim())
-  : path.resolve(process.cwd(), "data");
-export const SESSIONS_ROOT_PATH = path.join(DATA_DIR, "sessions");
+import { createDatabase, type Database, type NewActivity, type NewChatMessage, type NewJob, type SessionContext } from "@agent-plot/db";
 
 function sessionsDir(): string {
   return SESSIONS_ROOT_PATH;
@@ -109,6 +105,24 @@ export class SessionStore {
     });
     if (!row) return null;
     return { id: row.id, dir: row.dir };
+  }
+
+  async readSessionContext(sessionId: string): Promise<SessionContext | null> {
+    const row = await this.db.query.sessions.findFirst({
+      where: eq(schema.sessions.id, sessionId),
+      columns: { context: true },
+    });
+    if (!row) return null;
+    return (row.context ?? {}) as SessionContext;
+  }
+
+  async updateSessionContext(sessionId: string, context: Partial<SessionContext>): Promise<void> {
+    const existing = await this.readSessionContext(sessionId);
+    const next: SessionContext = { ...existing, ...context };
+    await this.db
+      .update(schema.sessions)
+      .set({ context: next, updatedAt: new Date() })
+      .where(eq(schema.sessions.id, sessionId));
   }
 
   async getChatMessage(sessionId: string, messageId: string): Promise<ChatMessageSnapshot | null> {

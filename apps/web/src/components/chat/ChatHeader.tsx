@@ -3,13 +3,16 @@ import { memo } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "@/components/ui/tooltip";
+import { SessionContextDialog } from "./SessionContextDialog.js";
 
 export const ChatHeader = memo(function ChatHeader({
   sessionTitle,
+  sessionId,
   canvasOpen,
   onToggleCanvas,
 }: {
   sessionTitle: string;
+  sessionId: string | null;
   canvasOpen: boolean;
   onToggleCanvas: () => void;
 }) {
@@ -25,6 +28,14 @@ export const ChatHeader = memo(function ChatHeader({
         </h2>
       </div>
       <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SessionContextDialog sessionId={sessionId} />
+            }
+          />
+          <TooltipPopup side="bottom">Session context</TooltipPopup>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={

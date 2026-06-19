@@ -2,11 +2,12 @@ export {
   getDefaultStore,
   pathAttachmentsFromEntries,
   resetDefaultStoreForTests,
-  SESSIONS_ROOT_PATH,
   SessionStore,
   type Session,
   type SessionListEntry,
 } from "./store.js";
+
+export { SESSIONS_ROOT_PATH } from "./python/paths.js";
 
 export {
   broadcastActivityEnd,
@@ -44,3 +45,16 @@ export {
   isCursorAgentConfigured,
   type SessionAgentPersistence,
 } from "./cursorAgent.js";
+
+export {
+  agentAssistantReply,
+  createAgent,
+  createAgentModel,
+  createAgentTools,
+  describeModel,
+  isAgentConfigured,
+  type Agent,
+  type AgentTools,
+  type ReplyOptions,
+  type ToolCallbacks,
+} from "./agent/index.js";

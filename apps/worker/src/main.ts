@@ -1,6 +1,7 @@
 import type { PathAttachment, WsInbound } from "@agent-plot/contracts";
 import { broadcast } from "@agent-plot/ws-hub";
 import {
+  agentAssistantReply,
   broadcastActivityEnd,
   broadcastActivityStart,
   broadcastAssistantDelta,
@@ -10,9 +11,11 @@ import {
   buildAgentMessageText,
   cursorAssistantReply,
   defaultCanvasVisibility,
+  describeModel,
   describeVisibility,
   formatCursorAgentError,
   getDefaultStore,
+  isAgentConfigured,
   isCursorAgentConfigured,
   mergeCanvasVisibility,
   parseCanvasIntentDelta,
@@ -65,8 +68,10 @@ async function runAssistantTurn(
   const { assistantId } = await broadcastAssistantStart(store, session.id);
   await send({ type: "chat.assistant.start", id: assistantId, createdAt: new Date().toISOString() });
 
+  const provider = process.env.AGENT_PLOT_AGENT_PROVIDER?.trim().toLowerCase() || "ollama";
+
   try {
-    if (isCursorAgentConfigured()) {
+    if (provider === "cursor" && isCursorAgentConfigured()) {
       await cursorAssistantReply(
         session,
         session.dir,
@@ -78,13 +83,38 @@ async function runAssistantTurn(
         },
         (chunk) => void emitDelta(session.id, assistantId, chunk, send).catch(() => {}),
       );
+    } else if ((provider === "ollama" || provider === "remote") && isAgentConfigured()) {
+      await agentAssistantReply({
+        session,
+        sessionDir: session.dir,
+        userText: agentText,
+        visibility,
+        store,
+        onDelta: (chunk) => void emitDelta(session.id, assistantId, chunk, send).catch(() => {}),
+        onActivity: async (label, detail) => {
+          const { activityId } = await broadcastActivityStart(store, session.id, label, detail);
+          await send({ type: "activity.start", id: activityId, label, ...(detail ? { detail } : {}), createdAt: new Date().toISOString() });
+          await broadcastActivityEnd(store, session.id, activityId, { status: "done" });
+          await send({ type: "activity.end", id: activityId, status: "done" });
+        },
+        onStepFinish: async (info) => {
+          if (info.toolCalls.length === 0) return;
+          const lines = [
+            "Tools used:",
+            ...info.toolCalls.map((call, i) => `- ${call}`),
+          ];
+          const note = await broadcastSystemNote(store, session.id, lines.join("\n"));
+          await send({ type: "chat.system", id: note.id, text: note.text, createdAt: note.createdAt });
+        },
+      });
     } else {
       const url = process.env.AGENT_PLOT_AGENT_URL?.trim();
       const reply = url
         ? await remoteAgent(url, session.id, agentText)
         : [
-            "Assistant (stub): set CURSOR_API_KEY to run the Cursor agent.",
-            "Tell the agent where your data lives (paths to .tif, .h5, .csv, .npy, etc.); it inspects contents and runs analysis scripts when appropriate.",
+            "Assistant (stub): configure an agent provider to run the assistant.",
+            `Current provider: ${provider}. Model: ${describeModel()}.`,
+            "Set AGENT_PLOT_AGENT_PROVIDER=ollama and ensure Ollama is running with the requested model.",
             "",
             describeVisibility(visibility),
             "",

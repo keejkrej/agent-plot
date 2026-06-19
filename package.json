@@ -3,9 +3,9 @@
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "dev": "AGENT_PLOT_DATA_DIR=$PWD/data AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app --filter @agent-plot/worker --filter @agent-plot/web --parallel dev",
-    "dev:ws-hub": "AGENT_PLOT_DATA_DIR=$PWD/data AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app dev",
-    "dev:web": "AGENT_PLOT_DATA_DIR=$PWD/data AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/web dev",
+    "dev": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app --filter @agent-plot/worker --filter @agent-plot/web --parallel dev",
+    "dev:ws-hub": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 pnpm --filter @agent-plot/ws-hub-app dev",
+    "dev:web": "AGENT_PLOT_WS_HUB_URL=http://127.0.0.1:8788 NEXT_PUBLIC_WS_URL=ws://127.0.0.1:8788 pnpm --filter @agent-plot/web dev",
     "build": "pnpm run -r build",
     "typecheck": "pnpm run -r typecheck"
   },

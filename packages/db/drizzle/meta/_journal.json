@@ -15,6 +15,13 @@
       "when": 1781877641456,
       "tag": "0001_mean_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781904438914,
+      "tag": "0002_big_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }

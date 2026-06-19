@@ -86,6 +86,7 @@ export function ChatView({
         <ChatHeader
           canvasOpen={canvasOpen}
           onToggleCanvas={onToggleCanvas}
+          sessionId={sessionId}
           sessionTitle={title}
         />
       </header>

@@ -188,7 +188,11 @@ export function buildAugmentedPayload(
 
   const statsRel =
     typeof augmented.stats === "string" ? String(augmented.stats) : "./artifacts/stats.csv";
-  Object.assign(augmented, loadStatsSeries(sessionDir, statsRel));
+  try {
+    Object.assign(augmented, loadStatsSeries(sessionDir, statsRel));
+  } catch {
+    // stats is optional; some analyses only produce tables/images
+  }
 
   const metaRel =
     typeof augmented.meta === "string" ? String(augmented.meta) : "./artifacts/meta.json";
