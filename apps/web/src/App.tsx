@@ -1,10 +1,12 @@
+"use client";
+
 import type { Spec } from "@json-render/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppSidebar, type SessionEntry } from "@/components/AppSidebar.js";
 import { CanvasSection } from "@/components/CanvasSection.js";
 import { ChatView } from "@/components/ChatView.js";
 import { NoActiveSessionState } from "@/components/NoActiveSessionState.js";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar.js";
 import { useComposerDraft } from "@/composerDraftStore.js";
 import { useComposerPathAttachments } from "@/composerPathAttachmentsStore.js";
 import { useSessionChat } from "@/hooks/useSessionChat.js";

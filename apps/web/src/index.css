@@ -269,13 +269,15 @@ body {
 
 html,
 body,
-#root {
+#__next {
   height: 100%;
   width: 100%;
   max-width: 100%;
 }
 
-#root {
+#__next {
+  display: flex;
+  flex-direction: column;
   overflow-x: hidden;
   overflow-x: clip;
   overflow-y: hidden;

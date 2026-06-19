@@ -8,6 +8,12 @@ apps/desktop/.electron-runtime
 .turbo
 *.tsbuildinfo
 
+# Next.js
+.next
+
+# SQLite runtime DB
+data/*.db*
+
 # Rust
 crates/target/
 

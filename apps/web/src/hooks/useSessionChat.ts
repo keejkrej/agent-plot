@@ -1,9 +1,9 @@
+"use client";
+
 import type {
   FilesystemBrowseResult,
   PathAttachment,
   SessionChatHistory,
-  WsFsBrowseError,
-  WsFsBrowseOk,
   WsInbound,
 } from "@agent-plot/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,20 +12,18 @@ import type { ChatState, SessionPhase } from "@/types.js";
 import { initialChatState } from "@/types.js";
 
 const wsBaseUrl = () => {
-  const u = new URL("/ws", window.location.origin);
+  const configured = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_WS_URL?.trim() : undefined;
+  if (configured) {
+    return configured.replace(/\/$/, "");
+  }
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const u = new URL("/ws", origin || "http://localhost");
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
   return u.toString().replace(/\/$/, "");
 };
 
 const RECONNECT_BASE_MS = 800;
 const RECONNECT_MAX_MS = 12_000;
-const FS_BROWSE_TIMEOUT_MS = 15_000;
-
-type FsBrowsePending = {
-  resolve: (result: FilesystemBrowseResult) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-};
 
 type UseSessionChatOptions = {
   sessionId: string | null;
@@ -48,24 +46,8 @@ export function useSessionChat({
   const mountedRef = useRef(true);
   const onCanvasTreeRef = useRef(onCanvasTree);
   const onCanvasErrorRef = useRef(onCanvasError);
-  const fsBrowsePendingRef = useRef(new Map<string, FsBrowsePending>());
   onCanvasTreeRef.current = onCanvasTree;
   onCanvasErrorRef.current = onCanvasError;
-
-  const settleFsBrowse = useCallback((requestId: string, ok: WsFsBrowseOk | WsFsBrowseError) => {
-    const pending = fsBrowsePendingRef.current.get(requestId);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    fsBrowsePendingRef.current.delete(requestId);
-    if (ok.type === "fs.browse.ok") {
-      pending.resolve({
-        parentPath: ok.parentPath,
-        entries: ok.entries,
-      });
-    } else {
-      pending.reject(new Error(ok.message));
-    }
-  }, []);
 
   const loadHistory = useCallback(
     async (id: string) => {
@@ -111,13 +93,37 @@ export function useSessionChat({
         error: null,
       }));
 
-      const ws = new WebSocket(`${wsBaseUrl()}?sessionId=${encodeURIComponent(id)}`);
+      const wsUrl = typeof window !== "undefined" ? `${wsBaseUrl()}?sessionId=${encodeURIComponent(id)}` : "";
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+
+      const postMessage = async (item: { text: string; pathAttachments?: PathAttachment[] }) => {
+        if (!sessionId) return false;
+        try {
+          const response = await fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: item.text,
+              ...(item.pathAttachments?.length ? { pathAttachments: item.pathAttachments } : {}),
+            }),
+          });
+          if (!response.ok) {
+            const body = await response.text().catch(() => "unknown");
+            throw new Error(`HTTP ${response.status}: ${body}`);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
 
       ws.onopen = () => {
         if (!mountedRef.current || wsRef.current !== ws) return;
         reconnectAttemptRef.current = 0;
-        ws.send(JSON.stringify({ type: "json_render" }));
+        void fetch(`${apiBase}/sessions/${encodeURIComponent(id)}/render`, { method: "POST" }).catch(() => {
+          /* ignore */
+        });
         setChat((prev) => ({
           ...prev,
           connection: "connected",
@@ -131,23 +137,13 @@ export function useSessionChat({
         const pending = pendingRef.current;
         pendingRef.current = [];
         for (const item of pending) {
-          ws.send(
-            JSON.stringify({
-              type: "user.message",
-              text: item.text,
-              ...(item.pathAttachments?.length ? { pathAttachments: item.pathAttachments } : {}),
-            }),
-          );
+          void postMessage(item);
         }
       };
 
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as WsInbound;
-          if (msg.type === "fs.browse.ok" || msg.type === "fs.browse.error") {
-            settleFsBrowse(msg.requestId, msg);
-            return;
-          }
           if (msg.type === "canvas.tree") {
             onCanvasTreeRef.current?.(msg.spec);
             return;
@@ -195,7 +191,7 @@ export function useSessionChat({
         }, delay);
       };
     },
-    [dispatch, sessionId, settleFsBrowse],
+    [dispatch, sessionId, apiBase],
   );
 
   useEffect(() => {
@@ -234,21 +230,20 @@ export function useSessionChat({
 
   const browseFilesystem = useCallback(
     (partialPath: string): Promise<FilesystemBrowseResult> => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return Promise.reject(new Error("WebSocket not connected"));
-      }
-      const requestId = crypto.randomUUID();
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          fsBrowsePendingRef.current.delete(requestId);
-          reject(new Error("Browse request timed out"));
-        }, FS_BROWSE_TIMEOUT_MS);
-        fsBrowsePendingRef.current.set(requestId, { resolve, reject, timer });
-        ws.send(JSON.stringify({ type: "fs.browse", requestId, partialPath }));
-      });
+      const url = `${apiBase}/fs/browse?${new URLSearchParams({ partialPath })}`;
+      return fetch(url)
+        .then(async (response) => {
+          if (!response.ok) {
+            const body = await response.text().catch(() => "unknown");
+            throw new Error(`HTTP ${response.status}: ${body}`);
+          }
+          return response.json() as Promise<FilesystemBrowseResult>;
+        })
+        .catch((error) => {
+          throw error instanceof Error ? error : new Error(String(error));
+        });
     },
-    [],
+    [apiBase],
   );
 
   const sendMessage = useCallback(
@@ -256,22 +251,28 @@ export function useSessionChat({
       const trimmed = text.trim();
       const paths = pathAttachments ?? [];
       if (!sessionId || (trimmed.length === 0 && paths.length === 0)) return false;
-      const payload = {
-        type: "user.message" as const,
-        text: trimmed,
-        ...(paths.length > 0 ? { pathAttachments: paths } : {}),
-      };
+      const item = { text: trimmed, pathAttachments: paths };
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        pendingRef.current.push({ text: trimmed, pathAttachments: paths });
+        pendingRef.current.push(item);
         setChat((prev) => ({ ...prev, phase: "running" }));
         return false;
       }
-      ws.send(JSON.stringify(payload));
+      void fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: trimmed,
+          ...(paths.length > 0 ? { pathAttachments: paths } : {}),
+        }),
+      }).catch(() => {
+        // If the POST fails while the socket is up, re-queue for retry on reconnect.
+        pendingRef.current.push(item);
+      });
       setChat((prev) => ({ ...prev, phase: "running", error: null }));
       return true;
     },
-    [sessionId],
+    [apiBase, sessionId],
   );
 
   const phase: SessionPhase =

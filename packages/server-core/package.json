@@ -1,0 +1,35 @@
+{
+  "name": "@agent-plot/server-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./store": "./src/store.ts",
+    "./python": "./src/python/index.ts",
+    "./canvas": "./src/canvasRefresh.ts",
+    "./canvas-intent": "./src/canvasIntent.ts",
+    "./merge-canvas": "./src/mergeCanvas.ts",
+    "./chat": "./src/chat.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@agent-plot/contracts": "workspace:*",
+    "@agent-plot/db": "workspace:*",
+    "@cursor/sdk": "^1.0.13",
+    "csv-parse": "^6.1.0",
+    "drizzle-orm": "^0.42.0",
+    "effect": "catalog:",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

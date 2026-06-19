@@ -145,12 +145,21 @@ export function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      await cookieStore.set({
-        expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
-        name: SIDEBAR_COOKIE_NAME,
-        path: "/",
-        value: String(openState),
-      });
+      try {
+        if (typeof window !== "undefined" && "cookieStore" in window) {
+          await (window as unknown as { cookieStore: { set(options: Record<string, unknown>): Promise<void> } }).cookieStore.set({
+            expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
+            name: SIDEBAR_COOKIE_NAME,
+            path: "/",
+            value: String(openState),
+          });
+        } else if (typeof document !== "undefined") {
+          const maxAge = SIDEBAR_COOKIE_MAX_AGE;
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState};path=/;max-age=${maxAge}`;
+        }
+      } catch {
+        // Ignore cookie errors in SSR or unsupported browsers.
+      }
     },
     [setOpenProp, open],
   );
