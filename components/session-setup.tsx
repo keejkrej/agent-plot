@@ -68,13 +68,26 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
   };
 
   const handlePrepareTitanic = async () => {
-    if (!sessionId) return;
     setPreparing(true);
     const result = await prepareTitanicExample();
     setPreparing(false);
     if (result.ok && result.folder) {
       setDataFolder(result.folder);
-      setMessage(`Titanic example ready at ${result.folder}. Click Save context to use it.`);
+      if (sessionId) {
+        const save = await writeSessionContext(sessionId, {
+          ...context,
+          dataFolder: result.folder,
+        });
+        setMessage(
+          save.ok
+            ? `Titanic example ready and saved to context.`
+            : `Titanic example ready, but saving context failed: ${save.error}`,
+        );
+      } else {
+        setMessage(
+          `Titanic example ready at ${result.folder}. Start a chat, then reopen Session setup and click Save context to link it.`,
+        );
+      }
     } else {
       setMessage(`Setup failed: ${result.error}`);
     }
@@ -160,7 +173,7 @@ export function SessionSetup({ sessionId }: { sessionId: string }) {
               {saving ? "Saving…" : "Save context"}
             </Button>
             <Button
-              disabled={preparing || !sessionId}
+              disabled={preparing}
               onClick={handlePrepareTitanic}
               size="sm"
               variant="secondary"
